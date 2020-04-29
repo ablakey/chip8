@@ -51,7 +51,7 @@ impl Chip8 {
         println!("{:x?}", opcode);
 
         // Decode opcode.
-        let opcode = OpCode::from_word(opcode);
+        let opcode = OpCode::from_value(opcode);
         println!("{:?}", opcode);
     }
 

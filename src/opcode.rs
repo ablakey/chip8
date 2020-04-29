@@ -2,102 +2,111 @@
 /// triple-nibbles... tribbles? Hah! I tried to with a `ux` crate but the ergonomics were
 /// unpleasant. They couldn't interact with the built-in primitives so easily, if I recall. I
 /// am pretty sure that u4 and u12 not actually being those sizes will be fine, so long as we
-/// perform bitwise math on them carefully. The most significant nibbles will just be 0.
+/// perform bitwise masking on them carefully. The most significant nibbles will just be 0.
 /// Rust won't type-check these though so I could pass a u4 where I meant to pass a u8.
 #[allow(non_camel_case_types)]
 pub type u4 = u8;
 #[allow(non_camel_case_types)]
 pub type u12 = u16;
 
+/// A structure of unpacked symbols from an OpCode.
+/// Not all symbols (and sometimes no symbols) are valid, depending on what the opcode is.
+/// n: 4-bit constant
+/// nn: 8-bit constant
+/// nnn: 12-bit address
+/// x: 4-bit register identifier
+/// y: 4-bit register identifier
+struct OpCodeSymbols {
+    a: u4,
+    x: u4,
+    y: u4,
+    n: u4,
+    nn: u8,
+    nnn: u12,
+}
+
+impl OpCodeSymbols {
+    /// Return the symbols from an opcode's raw value.
+    /// x and y need to be bit shifted to the least significant nibble before being casted to a
+    /// u4 (actually a u8).
+    fn from_value(opcode: u16) -> Self {
+        return Self {
+            a: ((opcode & 0xF000) >> 12) as u4,
+            x: ((opcode & 0x0F00) >> 8) as u4,
+            y: ((opcode & 0x00F0) >> 4) as u4,
+            n: (opcode & 0x000F) as u4,
+            nn: (opcode & 0x00FF) as u8,
+            nnn: (opcode & 0x0FFF) as u12,
+        };
+    }
+}
+
 /// OpCode enumerates all possible opcodes. Each variant is a tuple of 0-3 elements depending on
 /// The opcode's pattern. The OpCode
 #[derive(Debug, PartialEq)]
 pub enum OpCode {
-    // Flow
-    SysAddr(u12),    // 0NNN
-    Return,          // 00EE
-    CallAddr(u12),   // 2NNN
-    GotoAddrV0(u12), // BNNN
-
-    // Display
-    Clear,            // 00E0
-    Draw(u4, u4, u4), // DXYN
-
-    // Conditional
-    SkipEq(u4, u8), // 3XNN
-    // SkipNEqVx(u16, u16),   // 4XNN
-    // SkipVxVy(u16, u16),    // 5XY0
-    // SkipNEqVxVy(u16, u16), // 9XY0
-
-    // // Get/Set
-    SetVx(u4, u8), // 6XNN
-                   // AddToVx(u16, u16),  // 7XNN
-                   // CopyVxVy(u16, u16), // 8XY0
-                   // SetI(u16),          // ANNN
-                   // AddVxI(u16),        // FX1E
-                   // SetBCD(u16),        // FX33
-                   // DumpReg(u16),       // FX55
-                   // LoadReg(u16),       // FX65
-
-                   // // Math
-                   // AddVxVy(u16, u16), // 8XY4
-                   // SubVxVy(u16, u16), // 8XY5
-                   // SubVyVx(u16, u16), // 8XY7
-                   // RandVx(u16, u16),  // CXNN
-
-                   // // Bitwise
-                   // OrVxVy(u16, u16),   // 8XY1
-                   // AndVxVy(u16, u16),  // 8XY2
-                   // XorVxVy(u16, u16),  // 8XY3
-                   // LSBShift(u16, u16), // 8XY6
-                   // MSBShift(u16, u16), // 8XYE
-
-                   // // Input
-                   // KeyDown(u16),  // EX9E
-                   // KeyUp(u16),    // EXA1
-                   // AwaitKey(u16), // FX0A
-
-                   // // Delay
-                   // AddDelay(u16), // FX07
-                   // SetDelay(u16), // FX15
-
-                   // // Sound
-                   // SetSound(u16), // FX18
+    SYS { nnn: u12 },             // 0NNN
+    CLR,                          // 00E0
+    RTS,                          // 00EE
+    JUMP { nnn: u12 },            // 1NNN
+    CALL { nnn: u12 },            // 2NNN
+    SKE { x: u4, nn: u8 },        // 3XNN
+    SKNE { x: u4, nn: u8 },       // 4XNN
+    SKRE { x: u4, y: u4 },        // 5XY0
+    LOAD { x: u4, nn: u8 },       // 6XNN
+    ADD { x: u4, nn: u8 },        // 7XNN
+    MOVE { x: u4, y: u4 },        // 8XY0
+    OR { x: u4, y: u4 },          // 8XY1
+    AND { x: u4, y: u4 },         // 8XY2
+    XOR { x: u4, y: u4 },         // 8XY3
+    ADDR { x: u4, y: u4 },        // 8XY4
+    SUB { x: u4, y: u4 },         // 8XY5
+    SHR { x: u4, y: u4 },         // 8XY6
+    SUBN { x: u4, y: u4 },        // 8XY7
+    SHL { x: u4, y: u4 },         // 8XYE
+    SNE { x: u4, y: u4 },         // 9XY0
+    LOADI { nnn: u12 },           // ANNN
+    JUMPI { nnn: u12 },           // BNNN
+    RAND(u16, u16),               // CXNN
+    DRAW { x: u4, y: u4, n: u4 }, // DXYN
+    SKPR(u16),                    // EX9E
+    SKUP(u16),                    // EXA1
+    MOVED(u16),                   // FX07
+    KEYD(u16),                    // FX0A
+    LOADD(u16),                   // FX15
+    LOADS(u16),                   // FX18
+    ADDI { x: u4 },               // FX1E
+    LDSPR { x: u4 },              // FX29
+    BCD(u16),                     // FX33
+    STOR(u16),                    // FX55
+    READ(u16),                    // FX65
 }
 
 impl OpCode {
-    fn get_nn(opcode: u16) -> u8 {
-        opcode.to_be_bytes()[1]
-    }
-    fn get_n(opcode: u16) -> u4 {
-        return opcode.to_be_bytes()[1] & 0x0F; // Mask the high byte.
-    }
+    pub fn from_value(opcode: u16) -> Self {
+        #[rustfmt::skip]
+        // These are possible opcode symbols, not all of which are valid. Depending on the matched
+        // opcode, some of the symbols may be used.
+        let OpCodeSymbols { a, x, y, n, nnn, nn } = OpCodeSymbols::from_value(opcode);
 
-    /// Return the 12-bit address represented by the last 3 nibbles in the opcode.
-    fn get_nnn(opcode: u16) -> u12 {
-        return opcode & 0x0FFF;
-    }
-
-    pub fn from_word(opcode: u16) -> Self {
-        // Mask each nibble in the opcode and shift to isolate them.
-        let a: u4 = ((opcode & 0xF000) >> 12).to_be_bytes()[1];
-        let x: u4 = ((opcode & 0x0F00) >> 8).to_be_bytes()[1];
-        let y: u4 = ((opcode & 0x00F0) >> 4).to_be_bytes()[1];
-        let n: u4 = (opcode & 0x000F).to_be_bytes()[1];
-
-        println!("{:#X} {:#X} {:#X} {:#X} ", a, x, y, n);
-
-        // The order of these match branches are important as some opcodes are more specific than others.
+        // The order of these match branches are important.
+        // Some opcodes are more specific than others.
         let opcode = match (a, x, y, n) {
-            (0, 0, 0xE, 0xE) => OpCode::Return,
-            (0, 0, 0xE, 0) => OpCode::Clear,
-            (0xD, _, _, _) => OpCode::Draw(x, y, n),
-            (2, _, _, _) => OpCode::CallAddr(OpCode::get_nnn(opcode)),
-            (0, _, _, _) => OpCode::SysAddr(OpCode::get_nnn(opcode)),
-            (0xB, _, _, _) => OpCode::GotoAddrV0(OpCode::get_nnn(opcode)),
-            (3, _, _, _) => OpCode::SkipEq(x, OpCode::get_nn(opcode)),
-            // (6, _,_,_)) => OpCode::SetVx()
-            // TODO: implement the rest.
+            (0, 0, 0xE, 0xE) => OpCode::RTS,
+            (0, 0, 0xE, 0) => OpCode::CLR,
+            (0xD, _, _, _) => OpCode::DRAW { x, y, n },
+            (2, _, _, _) => OpCode::CALL { nnn },
+            (0, _, _, _) => OpCode::SYS { nnn },
+            (1, _, _, _) => OpCode::JUMP { nnn },
+            (3, _, _, _) => OpCode::SKE { x, nn },
+            (4, _, _, _) => OpCode::SKNE { x, nn },
+            (5, _, _, 0) => OpCode::SKRE { x, y },
+            (9, _, _, 0) => OpCode::SNE { x, y },
+            (6, _, _, _) => OpCode::LOAD { x, nn },
+            (7, _, _, _) => OpCode::ADD { x, nn },
+            (8, _, _, 0) => OpCode::MOVE { x, y },
+            (0xA, _, _, _) => OpCode::LOADI { nnn },
+            (0xB, _, _, _) => OpCode::JUMPI { nnn },
             (_, _, _, _) => panic!("Tried to call opcode {:X?} that is not handled.", opcode),
         };
 
@@ -113,26 +122,24 @@ mod tests {
     fn test_opcodes() {
         let opcode_tests = [
             (0x00E0, OpCode::Clear),
-            (0xD123, OpCode::Draw(1, 2, 3)),
+            (0xD123, OpCode::Draw { x: 1, y: 2, n: 3 }),
             (0x00EE, OpCode::Return),
         ];
 
         for (input, opcode) in opcode_tests.iter() {
-            assert!(OpCode::from_word(*input) == *opcode)
+            assert!(OpCode::from_value(*input) == *opcode)
         }
     }
 
     #[test]
-    fn test_get_nnn() {
-        assert_eq!(OpCode::get_nnn(0x0300), 0x300);
-        assert_eq!(OpCode::get_nnn(0x1111), 0x111);
-        assert_eq!(OpCode::get_nnn(0xABCD), 0xBCD);
-    }
+    fn test_opcode_symbols_from_value() {
+        #[rustfmt::skip]
+        let OpCodeSymbols { n, nn, nnn, x, y, .. } = OpCodeSymbols::from_value(0xABCD);
 
-    #[test]
-    fn test_get_nn() {
-        assert_eq!(OpCode::get_nn(0x0300), 0x00);
-        assert_eq!(OpCode::get_nn(0x1111), 0x11);
-        assert_eq!(OpCode::get_nn(0xABCD), 0xCD);
+        assert_eq!(n, 0xD);
+        assert_eq!(nn, 0xCD);
+        assert_eq!(nnn, 0xBCD);
+        assert_eq!(x, 0xB);
+        assert_eq!(y, 0xC);
     }
 }
