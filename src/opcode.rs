@@ -42,44 +42,45 @@ impl OpCodeSymbols {
 }
 
 /// OpCode enumerates all possible opcodes. Each variant is a tuple of 0-3 elements depending on
-/// The opcode's pattern. The OpCode
+/// The opcode's pattern. Details from: https://en.wikipedia.org/wiki/CHIP-8#Opcode_table and
+/// https://github.com/craigthomas/Chip8Assembler#mnemonic-table
 #[derive(Debug, PartialEq)]
 pub enum OpCode {
-    SYS { nnn: u12 },             // 0NNN
-    CLR,                          // 00E0
-    RTS,                          // 00EE
-    JUMP { nnn: u12 },            // 1NNN
-    CALL { nnn: u12 },            // 2NNN
-    SKE { x: u4, nn: u8 },        // 3XNN
-    SKNE { x: u4, nn: u8 },       // 4XNN
-    SKRE { x: u4, y: u4 },        // 5XY0
-    LOAD { x: u4, nn: u8 },       // 6XNN
-    ADD { x: u4, nn: u8 },        // 7XNN
-    MOVE { x: u4, y: u4 },        // 8XY0
-    OR { x: u4, y: u4 },          // 8XY1
-    AND { x: u4, y: u4 },         // 8XY2
-    XOR { x: u4, y: u4 },         // 8XY3
-    ADDR { x: u4, y: u4 },        // 8XY4
-    SUB { x: u4, y: u4 },         // 8XY5
-    SHR { x: u4, y: u4 },         // 8XY6
-    SUBN { x: u4, y: u4 },        // 8XY7
-    SHL { x: u4, y: u4 },         // 8XYE
-    SNE { x: u4, y: u4 },         // 9XY0
-    LOADI { nnn: u12 },           // ANNN
-    JUMPI { nnn: u12 },           // BNNN
-    RAND(u16, u16),               // CXNN
-    DRAW { x: u4, y: u4, n: u4 }, // DXYN
-    SKPR(u16),                    // EX9E
-    SKUP(u16),                    // EXA1
-    MOVED(u16),                   // FX07
-    KEYD(u16),                    // FX0A
-    LOADD(u16),                   // FX15
-    LOADS(u16),                   // FX18
-    ADDI { x: u4 },               // FX1E
-    LDSPR { x: u4 },              // FX29
-    BCD(u16),                     // FX33
-    STOR(u16),                    // FX55
-    READ(u16),                    // FX65
+    SYS { nnn: u12 },             // 0NNN Call RCA 1802 program
+    CLR,                          // 00E0 Clear screen
+    RTS,                          // 00EE Return from subroutine
+    JUMP { nnn: u12 },            // 1NNN Jump to address
+    CALL { nnn: u12 },            // 2NNN Call subroutine
+    SKE { x: u4, nn: u8 },        // 3XNN Skip next instruction if x equals nn
+    SKNE { x: u4, nn: u8 },       // 4XNN Do not skip next instruction if x equals nn
+    SKRE { x: u4, y: u4 },        // 5XY0 Skip if x equals y
+    LOAD { x: u4, nn: u8 },       // 6XNN Load x with value nn
+    ADD { x: u4, nn: u8 },        // 7XNN Add value nn to x
+    MOVE { x: u4, y: u4 },        // 8XY0 Move value from x to y
+    OR { x: u4, y: u4 },          // 8XY1 Perform logical OR on x and y and store in y
+    AND { x: u4, y: u4 },         // 8XY2 Perform logical AND on x and y and store in y
+    XOR { x: u4, y: u4 },         // 8XY3 Perform logical XOR on x and y and store in y
+    ADDR { x: u4, y: u4 },        // 8XY4 Add x to y and store in x - register F set on carry
+    SUB { x: u4, y: u4 },         // 8XY5 Subtract x from y and store in x. F set on !borrow
+    SHR { x: u4, y: u4 },         // 8XY6 Shift bits in x 1 bit right, store in y. Bit 0 shifts to F
+    SUBN { x: u4, y: u4 },        // 8XY7 Sets VX to VY minus VX. VF to 0 when borrow, else 1
+    SHL { x: u4, y: u4 },         // 8XYE Shift bits in x 1 bit left, store in y. Bit 7 shifts to  F
+    SKRNE { x: u4, y: u4 },       // 9XY0 Skip next instruction if x not equal y
+    LOADI { nnn: u12 },           // ANNN Load index with value nnn
+    JUMPI { nnn: u12 },           // BNNN Jump to address nnn + index
+    RAND { x: u4, nn: u8 },       // CXNN Generate random number between 0 and nn and store in y
+    DRAW { x: u4, y: u4, n: u4 }, // DXYN Draw n byte sprite at x location x, y location y
+    SKPR { x: u4 },               // EX9E Skip next instruction if the key in x is pressed
+    SKUP { x: u4 },               // EXA1 Skip next instruction if the key in x is not pressed
+    MOVED { x: u4 },              // FX07 Move delay timer value into y
+    KEYD { x: u4 },               // FX0A Wait for keypress and store in y
+    LOADD { x: u4 },              // FX15 Load delay timer with value in x
+    LOADS { x: u4 },              // FX18 Load sound timer with value in x
+    ADDI { x: u4 },               // FX1E Add value in x to index
+    LDSPR { x: u4 },              // FX29 Load index with sprite from x
+    BCD { x: u4 },                // FX33 Store the binary coded decimal value of x at index
+    STOR { x: u4 },               // FX55 Store the values of x registers at index
+    READ { x: u4 },               // FX65 Read back the stored values at index into registers
 }
 
 impl OpCode {
@@ -92,21 +93,41 @@ impl OpCode {
         // The order of these match branches are important.
         // Some opcodes are more specific than others.
         let opcode = match (a, x, y, n) {
-            (0, 0, 0xE, 0xE) => OpCode::RTS,
             (0, 0, 0xE, 0) => OpCode::CLR,
-            (0xD, _, _, _) => OpCode::DRAW { x, y, n },
-            (2, _, _, _) => OpCode::CALL { nnn },
+            (0, 0, 0xE, 0xE) => OpCode::RTS,
             (0, _, _, _) => OpCode::SYS { nnn },
             (1, _, _, _) => OpCode::JUMP { nnn },
+            (2, _, _, _) => OpCode::CALL { nnn },
             (3, _, _, _) => OpCode::SKE { x, nn },
             (4, _, _, _) => OpCode::SKNE { x, nn },
             (5, _, _, 0) => OpCode::SKRE { x, y },
-            (9, _, _, 0) => OpCode::SNE { x, y },
             (6, _, _, _) => OpCode::LOAD { x, nn },
             (7, _, _, _) => OpCode::ADD { x, nn },
             (8, _, _, 0) => OpCode::MOVE { x, y },
+            (8, _, _, 1) => OpCode::OR { x, y },
+            (8, _, _, 2) => OpCode::AND { x, y },
+            (8, _, _, 3) => OpCode::XOR { x, y },
+            (8, _, _, 4) => OpCode::ADDR { x, y },
+            (8, _, _, 5) => OpCode::SUB { x, y },
+            (8, _, _, 6) => OpCode::SHR { x, y },
+            (8, _, _, 7) => OpCode::SUBN { x, y },
+            (8, _, _, 0xE) => OpCode::SHL { x, y },
+            (9, _, _, 0) => OpCode::SKRNE { x, y },
             (0xA, _, _, _) => OpCode::LOADI { nnn },
             (0xB, _, _, _) => OpCode::JUMPI { nnn },
+            (0xC, _, _, _) => OpCode::RAND { x, nn },
+            (0xD, _, _, _) => OpCode::DRAW { x, y, n },
+            (0xE, _, 9, 0xE) => OpCode::SKPR { x },
+            (0xE, _, 0xA, 1) => OpCode::SKUP { x },
+            (0xF, _, 0, 7) => OpCode::MOVED { x },
+            (0xF, _, 0, 0xA) => OpCode::KEYD { x },
+            (0xF, _, 1, 5) => OpCode::LOADD { x },
+            (0xF, _, 1, 8) => OpCode::LOADS { x },
+            (0xF, _, 1, 0xE) => OpCode::ADDI { x },
+            (0xF, _, 2, 9) => OpCode::LDSPR { x },
+            (0xF, _, 3, 3) => OpCode::BCD { x },
+            (0xF, _, 5, 5) => OpCode::STOR { x },
+            (0xF, _, 6, 5) => OpCode::READ { x },
             (_, _, _, _) => panic!("Tried to call opcode {:X?} that is not handled.", opcode),
         };
 
@@ -121,9 +142,9 @@ mod tests {
     #[test]
     fn test_opcodes() {
         let opcode_tests = [
-            (0x00E0, OpCode::Clear),
-            (0xD123, OpCode::Draw { x: 1, y: 2, n: 3 }),
-            (0x00EE, OpCode::Return),
+            (0x00E0, OpCode::CLR),
+            (0xD123, OpCode::DRAW { x: 1, y: 2, n: 3 }),
+            (0x00EE, OpCode::RTS),
         ];
 
         for (input, opcode) in opcode_tests.iter() {
