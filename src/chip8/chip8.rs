@@ -1,4 +1,3 @@
-use crate::opcode::OpCode;
 use pretty_hex::*;
 use std::fs::File;
 use std::io;
@@ -8,13 +7,13 @@ pub struct Chip8 {
     memory: [u8; 4096],
     // cpu_registers: [u8; 16],
     // index_register: u16,
-    program_counter: u16, // TODO: make this u16 and make memory indexable.
-                          // graphics_buffer: [u8; 64 * 32], // 64 rows, 32 cols, row-major.
-                          // delay_timer: u8,
-                          // sound_timer: u8,
-                          // stack: [u16; 16],
-                          // stack_pointer: u16,
-                          // keys: [u8; 16],
+    program_counter: u16,
+    // graphics_buffer: [u8; 64 * 32], // 64 rows, 32 cols, row-major.
+    // delay_timer: u8,
+    // sound_timer: u8,
+    // stack: [u16; 16],
+    // stack_pointer: u16,
+    // keys: [u8; 16],
 }
 
 impl Chip8 {
@@ -46,13 +45,10 @@ impl Chip8 {
     }
 
     pub fn tick(&mut self) {
-        // Fetch opcode.
+        // Execute opcode.
         let opcode = self.get_word(self.program_counter);
         println!("{:x?}", opcode);
-
-        // Decode opcode.
-        let opcode = OpCode::from_value(opcode);
-        println!("{:?}", opcode);
+        self.execute_opcode(opcode)
     }
 
     /// Return a byte from `address` in memory.
