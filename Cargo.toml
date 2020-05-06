@@ -8,3 +8,7 @@ edition = "2018"
 
 [dependencies]
 pretty-hex = "0.1.1"
+
+[dependencies.sdl2]
+version = "0.33.0"
+features = ["gfx"]
