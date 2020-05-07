@@ -1,4 +1,3 @@
-extern crate sdl2;
 mod chip8;
 mod graphics;
 use chip8::Chip8;
@@ -15,16 +14,14 @@ fn main() -> Result<(), String> {
     // Load a program.
     let mut machine = Chip8::init();
     machine.load_rom(String::from("roms/maze.c8")).unwrap();
-    machine.print_debug();
-    machine.print_mem();
 
     'running: loop {
         // Advance the program a tick.
         machine.tick();
 
         // Draw to screen?
-        if machine.draw_graphics {
-            screen.blit(&machine.graphics_buffer)
+        if machine.has_graphics_update {
+            screen.blit(&machine.graphics_buffer);
         }
 
         // Handle keyboard/event input.

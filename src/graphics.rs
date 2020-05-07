@@ -1,5 +1,3 @@
-extern crate sdl2;
-
 pub struct Screen {
     sdl_canvas: sdl2::render::Canvas<sdl2::video::Window>,
     scale_factor: u32,
@@ -55,8 +53,6 @@ impl Screen {
                 );
             })
             .collect();
-
-        println!("{}", rects.len());
 
         self.sdl_canvas.set_draw_color(Self::PIXEL_COLOR);
         self.sdl_canvas.fill_rects(&rects).unwrap();

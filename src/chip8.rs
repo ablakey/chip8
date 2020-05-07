@@ -1,5 +1,6 @@
 #![allow(non_snake_case)]
 use pretty_hex::*;
+use rand::Rng;
 use std::fs::File;
 use std::io;
 use std::io::prelude::*;
@@ -22,6 +23,7 @@ pub type u12 = u16;
 /// nnn: 12-bit address
 /// x: 4-bit register identifier
 /// y: 4-bit register identifier
+#[derive(Debug)]
 struct OpCodeSymbols {
     a: u4,
     x: u4,
@@ -50,7 +52,7 @@ impl OpCodeSymbols {
 pub struct Chip8 {
     memory: [u8; 4096],
     registers: [u8; 16], // 16 registers: V0 - VF
-    // index_register: u16,
+    index_register: u16,
     program_counter: u16,
     pub graphics_buffer: [bool; 64 * 32], // 64 rows, 32 cols, row-major.
     // delay_timer: u8,
@@ -58,9 +60,10 @@ pub struct Chip8 {
     // stack: [u16; 16],
     // stack_pointer: u16,
     // keys: [u8; 16],
-    pub draw_graphics: bool,
+    pub has_graphics_update: bool,
 }
 
+/// Core feature implenentation.
 impl Chip8 {
     // Memory addresses (start, end).
     // const ADDR_INTERPRETER: (u16, u16) = (0x000, 0x1FF);
@@ -72,7 +75,7 @@ impl Chip8 {
         Self {
             memory: [0; 4096],
             registers: [0; 16],
-            // index_register: 0,
+            index_register: 0,
             program_counter: Chip8::ADDRESS_ROM,
             graphics_buffer: [false; 64 * 32],
             // delay_timer: 0,
@@ -80,7 +83,7 @@ impl Chip8 {
             // stack: [0; 16],
             // stack_pointer: 0,
             // keys: [0; 16],
-            draw_graphics: false,
+            has_graphics_update: false,
         }
     }
 
@@ -94,36 +97,28 @@ impl Chip8 {
     /// Execute the next opcode.
     pub fn tick(&mut self) {
         // Reset flags.
-        self.draw_graphics = false;
-        // Execute opcode.
-        let opcode = self.get_word(self.program_counter);
+        self.has_graphics_update = false;
+
+        // Get opcode by combining two bits from memory.
+        let low = self.memory[self.program_counter as usize + 1];
+        let high = self.memory[self.program_counter as usize];
+        let opcode = ((high as u16) << 8) | low as u16;
+        let opcode_symbols = OpCodeSymbols::from_value(opcode);
         println!("opcode: {:x?}", opcode);
-        self.execute_opcode(opcode)
+
+        self.execute_opcode(&opcode_symbols);
+
+        // Increment PC unless opcode is JUMP.
+        if opcode_symbols.a != 0xB {
+            self.program_counter += Chip8::OPCODE_SIZE;
+        }
     }
 
-    /// Return a byte from `address` in memory.
-    fn get_byte(&self, address: u16) -> u8 {
-        self.memory[address as usize]
-    }
-
-    /// Return a 16-bit word from the two contiguous bytes beginning at `address` in memory.
-    fn get_word(&self, address: u16) -> u16 {
-        let high = self.memory[address as usize];
-        let low = self.memory[address as usize + 1];
-        ((high as u16) << 8) | low as u16
-    }
-
-    ///  Advance the program counter.
-    /// Because an opcode is 2 bits, it has to advance by that amount.
-    fn increment_pc(&mut self) {
-        self.program_counter += Chip8::OPCODE_SIZE;
-    }
-
-    fn execute_opcode(&mut self, opcode: u16) {
+    fn execute_opcode(&mut self, opcode_symbols: &OpCodeSymbols) {
         #[rustfmt::skip]
     // These are possible opcode symbols, not all of which are valid. Depending on the matched
     // opcode, some of the symbols may be used.
-    let OpCodeSymbols { a, x, y, n, nnn, nn } = OpCodeSymbols::from_value(opcode);
+    let OpCodeSymbols { a, x, y, n, nnn, nn } = *opcode_symbols;
 
         // The order of these match branches are important.
         // Some opcodes are more specific than others.
@@ -163,15 +158,16 @@ impl Chip8 {
             (0xF, _, 3, 3) => self.BCD(x),
             (0xF, _, 5, 5) => self.STOR(x),
             (0xF, _, 6, 5) => self.READ(x),
-            (_, _, _, _) => panic!("Tried to call opcode {:X?} that is not handled.", opcode),
+            (_, _, _, _) => panic!("Tried to call {:?} but isn't handled.", opcode_symbols),
         };
     }
-
+}
+/// Opcode implementation.
+impl Chip8 {
     /// Clear the graphics buffer.
     fn CLR(&mut self) {
         self.graphics_buffer = [false; 64 * 32];
-        self.draw_graphics = true;
-        self.increment_pc();
+        self.has_graphics_update = true;
     }
 
     fn RTS(&mut self) {}
@@ -183,111 +179,165 @@ impl Chip8 {
             nnn
         )
     }
+
+    /// Skip next instruction if VX == NN.
     fn SKE(&mut self, x: u4, nn: u8) {
-        panic!("Not implemented.")
+        if self.registers[x as usize] == nn {
+            self.program_counter += Chip8::OPCODE_SIZE;
+        }
     }
+
+    /// Skip next instruction if VX != NN.
     fn SKNE(&mut self, x: u4, nn: u8) {
-        panic!("Not implemented.")
+        if self.registers[x as usize] != nn {
+            self.program_counter += Chip8::OPCODE_SIZE;
+        }
     }
+
+    /// Skip next instruction if VX == VY;
     fn SKRE(&mut self, x: u4, y: u4) {
-        panic!("Not implemented.")
+        if self.registers[x as usize] == self.registers[y as usize] {
+            self.program_counter += Chip8::OPCODE_SIZE;
+        }
     }
 
     /// Set register X to NN;
     fn LOAD(&mut self, x: u4, nn: u8) {
         self.registers[x as usize] = nn;
-        self.increment_pc();
     }
 
+    /// Add NN to VX. Carry flag isn't changed.
     fn ADD(&mut self, x: u4, nn: u8) {
-        panic!("Not implemented.")
+        self.registers[x as usize] += nn;
     }
+
     fn MOVE(&mut self, x: u4, y: u4) {
-        panic!("Not implemented.")
+        self.not_implemented();
     }
     fn OR(&mut self, x: u4, y: u4) {
-        panic!("Not implemented.")
+        self.not_implemented();
     }
     fn AND(&mut self, x: u4, y: u4) {
-        panic!("Not implemented.")
+        self.not_implemented();
     }
     fn XOR(&mut self, x: u4, y: u4) {
-        panic!("Not implemented.")
+        self.not_implemented();
     }
     fn ADDR(&mut self, x: u4, y: u4) {
-        panic!("Not implemented.")
+        self.not_implemented();
     }
     fn SUB(&mut self, x: u4, y: u4) {
-        panic!("Not implemented.")
+        self.not_implemented();
     }
     fn SHR(&mut self, x: u4, y: u4) {
-        panic!("Not implemented.")
+        self.not_implemented();
     }
     fn SUBN(&mut self, x: u4, y: u4) {
-        panic!("Not implemented.")
+        self.not_implemented();
     }
     fn SHL(&mut self, x: u4, y: u4) {
-        panic!("Not implemented.")
+        self.not_implemented();
     }
     fn SKRNE(&mut self, x: u4, y: u4) {
-        panic!("Not implemented.")
+        self.not_implemented();
     }
+
+    /// Set index register to NNN.
     fn LOADI(&mut self, nnn: u12) {
-        panic!("Not implemented.")
+        self.index_register = nnn;
     }
+
     fn JUMPI(&mut self, nnn: u12) {
-        panic!("Not implemented.")
+        self.not_implemented();
     }
+
+    /// Set VX to result of bitwise: NN & RANDOM
     fn RAND(&mut self, x: u4, nn: u8) {
-        panic!("Not implemented.")
+        let rand = rand::thread_rng().gen_range(0, 255) & nn;
+        self.registers[x as usize] = rand;
     }
+
+    /// Draws N sprite lines from memory[I] to coordinates (VX, VY). VF is set high if collision.
     fn DRAW(&mut self, x: u4, y: u4, n: u4) {
-        panic!("Not implemented.")
+        // Read n bytes from memory starting at I.
+        let start = self.index_register as usize;
+        let end = self.index_register as usize + n as usize;
+
+        for (row, &pixels) in self.memory[start..end].iter().enumerate() {
+            for col in 0..8 {
+                // Get a pixel by masking 0x80 aka `0b10000000` and shifting the 1 right each time.
+                // If it is 1, do collision detection and set the pixel.
+                if pixels & 0x80 >> col > 0 {
+                    // Get current pixel.
+                    let idx = x as usize + col as usize + ((y as usize + row) * 64);
+                    let current_pixel = self.graphics_buffer[idx];
+
+                    // If collision, set VF to 1.
+                    if current_pixel {
+                        self.registers[0xF] = 1;
+                    }
+
+                    // Update the pixel with XOR.
+                    self.graphics_buffer[idx as usize] = current_pixel ^ true;
+                }
+            }
+        }
+
+        self.has_graphics_update = true;
     }
     fn SKPR(&mut self, x: u4) {
-        panic!("Not implemented.")
+        self.not_implemented();
     }
     fn SKUP(&mut self, x: u4) {
-        panic!("Not implemented.")
+        self.not_implemented();
     }
     fn MOVED(&mut self, x: u4) {
-        panic!("Not implemented.")
+        self.not_implemented();
     }
     fn KEYD(&mut self, x: u4) {
-        panic!("Not implemented.")
+        self.not_implemented();
     }
     fn LOADD(&mut self, x: u4) {
-        panic!("Not implemented.")
+        self.not_implemented();
     }
     fn LOADS(&mut self, x: u4) {
-        panic!("Not implemented.")
+        self.not_implemented();
     }
     fn ADDI(&mut self, x: u4) {
-        panic!("Not implemented.")
+        self.not_implemented();
     }
     fn LDSPR(&mut self, x: u4) {
-        panic!("Not implemented.")
+        self.not_implemented();
     }
     fn BCD(&mut self, x: u4) {
-        panic!("Not implemented.")
+        self.not_implemented();
     }
     fn STOR(&mut self, x: u4) {
-        panic!("Not implemented.")
+        self.not_implemented();
     }
     fn READ(&mut self, x: u4) {
-        panic!("Not implemented.")
+        self.not_implemented();
     }
 }
 
+/// Debug functions.
 #[cfg(debug_assertions)]
 impl Chip8 {
     pub fn print_debug(&self) {
         println!("PC: {}", self.program_counter);
+        println!("I: {}", self.index_register);
+        println!("Registers: {:x?}", self.registers)
     }
 
     pub fn print_mem(&self) {
         let start = Chip8::ADDRESS_ROM as usize;
         println!("{:?}", self.memory[start..start + 200].to_vec().hex_dump());
+    }
+
+    fn not_implemented(&self) {
+        self.print_debug();
+        self.print_mem();
+        panic!("Not implemented.");
     }
 }
 
@@ -322,13 +372,10 @@ mod tests {
     #[test]
     fn test_opcode_clr() {
         let mut machine = Chip8::init();
-        machine.execute_opcode(0x00E0);
+        let opcode_symbols = OpCodeSymbols::from_value(0x00E0);
+        machine.execute_opcode(&opcode_symbols);
 
         assert!(machine.graphics_buffer.iter().all(|&n| !n));
-        assert!(machine.draw_graphics);
-        assert_eq!(
-            machine.program_counter,
-            Chip8::ADDRESS_ROM + Chip8::OPCODE_SIZE
-        );
+        assert!(machine.has_graphics_update);
     }
 }
