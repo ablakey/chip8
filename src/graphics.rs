@@ -37,7 +37,7 @@ impl Screen {
     /// Iterate through all pixels in buffer and draw only those that are set active.
     /// The screen is first blanked, then all pixels in buffer are evaluated for being active.
     /// The remaining pixels are drawn as filled rects, scaled by scale_factor.
-    pub fn blit(&mut self, &buffer: &[bool; 64 * 32]) {
+    pub fn draw(&mut self, &buffer: &[bool; 64 * 32]) {
         let rects: Vec<sdl2::rect::Rect> = buffer
             .iter()
             .enumerate()
@@ -46,7 +46,7 @@ impl Screen {
                 // Row-major, so we divide and modulo by width to get row and column number.
                 let row = n / Self::CHIP8_WIDTH as usize;
                 let col = n % Self::CHIP8_WIDTH as usize;
-                println!("{} {}", row, col);
+
                 return sdl2::rect::Rect::new(
                     (col * self.scale_factor as usize) as i32,
                     (row * self.scale_factor as usize) as i32,

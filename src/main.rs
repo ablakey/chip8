@@ -4,7 +4,7 @@ use chip8::Chip8;
 use graphics::Screen;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
-// use std::{thread, time};
+use std::{thread, time};
 
 fn main() -> Result<(), String> {
     // Init SDL components (the CHIP8 I/O)
@@ -14,17 +14,24 @@ fn main() -> Result<(), String> {
 
     // Load a program.
     let mut machine = Chip8::init();
-    machine.load_rom(String::from("roms/maze.c8")).unwrap();
+    machine
+        .load_rom(String::from("roms/particle_demo.c8"))
+        .unwrap();
 
     machine.print_mem();
 
     'running: loop {
-        // Advance the program a tick.
-        machine.tick();
+        // Advance the program at about 500hz (8.33 ticks per cycle.)
+        // Note: we are rounding to 8 for simplicity, meaning the emulator runs a bit slow.
+        for _ in 0..8 {
+            machine.tick();
+        }
+
+        machine.decrement_timers();
 
         // Draw to screen?
         if machine.has_graphics_update {
-            screen.blit(&machine.graphics_buffer);
+            screen.draw(&machine.graphics_buffer);
         }
 
         // Handle keyboard/event input.
@@ -41,8 +48,10 @@ fn main() -> Result<(), String> {
             }
         }
 
-        //Throttle the loop rate.
-        // thread::sleep(time::Duration::from_millis(100));
+        // Loop at ~ 60hz.
+        // Note: this speeds the emulator up (16ms vs. 16.66ms). It also means we sleep for  at
+        // least 16ms but could be more. We should implement something more robust.
+        thread::sleep(time::Duration::from_millis(16));
     }
 
     Ok(())

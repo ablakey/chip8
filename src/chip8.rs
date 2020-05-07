@@ -55,8 +55,8 @@ pub struct Chip8 {
     index_register: u16,
     program_counter: u16,
     pub graphics_buffer: [bool; 64 * 32], // 64 rows, 32 cols, row-major.
-    // delay_timer: u8,
-    // sound_timer: u8,
+    delay_timer: u8,
+    sound_timer: u8,
     stack: [u16; 16],
     stack_pointer: usize,
     // keys: [u8; 16],
@@ -78,8 +78,8 @@ impl Chip8 {
             index_register: 0,
             program_counter: Chip8::ADDRESS_ROM,
             graphics_buffer: [false; 64 * 32],
-            // delay_timer: 0,
-            // sound_timer: 0,
+            delay_timer: 0,
+            sound_timer: 0,
             stack: [0; 16],
             stack_pointer: 0,
             // keys: [0; 16],
@@ -111,8 +111,18 @@ impl Chip8 {
         // Increment PC unless opcode is JUMP or CALL.
         if ![0xB, 0x2, 0x1].contains(&opcode_symbols.a) {
             self.program_counter += Chip8::OPCODE_SIZE;
-        } else {
-            println!("Skip PC increment.");
+        }
+    }
+
+    /// Decrement both sound and delay timers.
+    /// This should be getting called at 60hz by the emulator's controller.
+    pub fn decrement_timers(&mut self) {
+        if self.delay_timer > 0 {
+            self.delay_timer -= 1;
+        }
+
+        if self.sound_timer > 0 {
+            self.sound_timer -= 1;
         }
     }
 
@@ -184,13 +194,11 @@ impl Chip8 {
 
     /// Jump PC to NNN.
     fn JUMP(&mut self, nnn: u12) {
-        println!("{:x?}", self.registers);
         self.program_counter = nnn;
     }
 
     /// Call subroutine at NNN.
     fn CALL(&mut self, nnn: u12) {
-        println!("{:x}", nnn);
         // Maintain current PC in the stack to be able to return from subroutine.
         self.stack[self.stack_pointer] = self.program_counter;
         self.stack_pointer += 1;
@@ -199,10 +207,7 @@ impl Chip8 {
 
     /// Skip next instruction if VX == NN.
     fn SKE(&mut self, x: u4, nn: u8) {
-        println!("{:x}", self.registers[x as usize]);
-        println!("{:x}", nn);
         if self.registers[x as usize] == nn {
-            println!("SKIP");
             self.program_counter += Chip8::OPCODE_SIZE;
         }
     }
@@ -328,9 +333,22 @@ impl Chip8 {
     fn LOADS(&mut self, x: u4) {
         self.not_implemented();
     }
+
+    /// Add VX to I.  VF set to 1 if there is an overflow, else 0.
     fn ADDI(&mut self, x: u4) {
-        self.not_implemented();
+        let vx = self.registers[x as usize] as u16;
+
+        // Range overflow?
+        if self.index_register as usize + vx as usize > 0xFFF {
+            self.registers[0xF] = 1;
+        } else {
+            self.registers[0xF] = 0;
+        }
+
+        // Add with possible overflow.
+        self.index_register += vx;
     }
+
     fn LDSPR(&mut self, x: u4) {
         self.not_implemented();
     }
@@ -402,5 +420,53 @@ mod tests {
 
         assert!(machine.graphics_buffer.iter().all(|&n| !n));
         assert!(machine.has_graphics_update);
+    }
+
+    /// Timers should decrement by 1 each time `decrement_timers` is called, but never fall below 0.
+    #[test]
+    fn test_decrement_timers() {
+        let mut machine = Chip8::init();
+        machine.delay_timer = 5;
+        machine.sound_timer = 0;
+
+        machine.decrement_timers();
+
+        assert_eq!(machine.sound_timer, 0);
+        assert_eq!(machine.delay_timer, 4);
+    }
+
+    /// The Draw opcode should XOR black and white bits to the graphics buffer with overflow to next
+    // line. It is byte-encoded sprite-based. See specifications online for more details.
+    #[test]
+    fn test_draw() {
+        let mut machine = Chip8::init();
+        machine.index_register = 0x204; // Where to look for the sprite data.
+        machine.memory[0x204] = 0xCC; // 8 bits to draw:  11001100
+        machine.memory[0x205] = 0xFF; // 8 bits to draw:  11111111
+        machine.registers[0] = 0; // x coordinate
+        machine.registers[1] = 0; // y-coordinate
+
+        machine.DRAW(0, 1, 1); // Get x,y from 0,1 and draw a single byte of data.
+
+        // The segment of the graphics buffer is as expected. We drew four pixels at x= 0, 1, 4, 5.
+        assert_eq!(
+            machine.graphics_buffer[0..8],
+            [true, true, false, false, true, true, false, false]
+        );
+
+        // In this case, we draw two lines, not one.
+        machine.DRAW(0, 1, 2);
+
+        // XORing has turned off the pixels that were on.
+        assert_eq!(
+            machine.graphics_buffer[0..8],
+            [false, false, false, false, false, false, false, false]
+        );
+
+        // But the second line is all on now.
+        assert_eq!(
+            machine.graphics_buffer[64..72],
+            [true, true, true, true, true, true, true, true]
+        )
     }
 }
