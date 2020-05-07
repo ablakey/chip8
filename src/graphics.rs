@@ -43,8 +43,10 @@ impl Screen {
             .enumerate()
             .filter(|(_, &x)| x)
             .map(|(n, _)| {
+                // Row-major, so we divide and modulo by width to get row and column number.
                 let row = n / Self::CHIP8_WIDTH as usize;
-                let col = n % Self::CHIP8_HEIGHT as usize;
+                let col = n % Self::CHIP8_WIDTH as usize;
+                println!("{} {}", row, col);
                 return sdl2::rect::Rect::new(
                     (col * self.scale_factor as usize) as i32,
                     (row * self.scale_factor as usize) as i32,

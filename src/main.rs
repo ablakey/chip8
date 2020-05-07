@@ -4,6 +4,7 @@ use chip8::Chip8;
 use graphics::Screen;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
+// use std::{thread, time};
 
 fn main() -> Result<(), String> {
     // Init SDL components (the CHIP8 I/O)
@@ -14,6 +15,8 @@ fn main() -> Result<(), String> {
     // Load a program.
     let mut machine = Chip8::init();
     machine.load_rom(String::from("roms/maze.c8")).unwrap();
+
+    machine.print_mem();
 
     'running: loop {
         // Advance the program a tick.
@@ -39,6 +42,7 @@ fn main() -> Result<(), String> {
         }
 
         //Throttle the loop rate.
+        // thread::sleep(time::Duration::from_millis(100));
     }
 
     Ok(())

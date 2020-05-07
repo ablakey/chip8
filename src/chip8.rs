@@ -57,8 +57,8 @@ pub struct Chip8 {
     pub graphics_buffer: [bool; 64 * 32], // 64 rows, 32 cols, row-major.
     // delay_timer: u8,
     // sound_timer: u8,
-    // stack: [u16; 16],
-    // stack_pointer: u16,
+    stack: [u16; 16],
+    stack_pointer: usize,
     // keys: [u8; 16],
     pub has_graphics_update: bool,
 }
@@ -80,8 +80,8 @@ impl Chip8 {
             graphics_buffer: [false; 64 * 32],
             // delay_timer: 0,
             // sound_timer: 0,
-            // stack: [0; 16],
-            // stack_pointer: 0,
+            stack: [0; 16],
+            stack_pointer: 0,
             // keys: [0; 16],
             has_graphics_update: false,
         }
@@ -108,9 +108,11 @@ impl Chip8 {
 
         self.execute_opcode(&opcode_symbols);
 
-        // Increment PC unless opcode is JUMP.
-        if opcode_symbols.a != 0xB {
+        // Increment PC unless opcode is JUMP or CALL.
+        if ![0xB, 0x2, 0x1].contains(&opcode_symbols.a) {
             self.program_counter += Chip8::OPCODE_SIZE;
+        } else {
+            println!("Skip PC increment.");
         }
     }
 
@@ -171,18 +173,36 @@ impl Chip8 {
     }
 
     fn RTS(&mut self) {}
-    fn SYS(&mut self, nnn: u12) {}
-    fn JUMP(&mut self, nnn: u12) {}
-    fn CALL(&mut self, nnn: u12) {
+
+    // Jump to machine code routine at nnn. Not implemented in modern CHIP8 emulators.
+    fn SYS(&mut self, nnn: u12) {
         panic!(
-            "opcode CALL not implemented. Attempted at address: {:#X}",
+            "opcode SYS not implemented. Attempted at address: {:#X}",
             nnn
-        )
+        );
+    }
+
+    /// Jump PC to NNN.
+    fn JUMP(&mut self, nnn: u12) {
+        println!("{:x?}", self.registers);
+        self.program_counter = nnn;
+    }
+
+    /// Call subroutine at NNN.
+    fn CALL(&mut self, nnn: u12) {
+        println!("{:x}", nnn);
+        // Maintain current PC in the stack to be able to return from subroutine.
+        self.stack[self.stack_pointer] = self.program_counter;
+        self.stack_pointer += 1;
+        self.program_counter = nnn;
     }
 
     /// Skip next instruction if VX == NN.
     fn SKE(&mut self, x: u4, nn: u8) {
+        println!("{:x}", self.registers[x as usize]);
+        println!("{:x}", nn);
         if self.registers[x as usize] == nn {
+            println!("SKIP");
             self.program_counter += Chip8::OPCODE_SIZE;
         }
     }
@@ -211,9 +231,11 @@ impl Chip8 {
         self.registers[x as usize] += nn;
     }
 
+    // Write VY to VX.
     fn MOVE(&mut self, x: u4, y: u4) {
-        self.not_implemented();
+        self.registers[x as usize] = self.registers[y as usize];
     }
+
     fn OR(&mut self, x: u4, y: u4) {
         self.not_implemented();
     }
@@ -263,13 +285,16 @@ impl Chip8 {
         let start = self.index_register as usize;
         let end = self.index_register as usize + n as usize;
 
+        let vx = self.registers[x as usize];
+        let vy = self.registers[y as usize];
+
         for (row, &pixels) in self.memory[start..end].iter().enumerate() {
             for col in 0..8 {
                 // Get a pixel by masking 0x80 aka `0b10000000` and shifting the 1 right each time.
                 // If it is 1, do collision detection and set the pixel.
                 if pixels & 0x80 >> col > 0 {
                     // Get current pixel.
-                    let idx = x as usize + col as usize + ((y as usize + row) * 64);
+                    let idx = vx as usize + col as usize + ((vy as usize + row) * 64);
                     let current_pixel = self.graphics_buffer[idx];
 
                     // If collision, set VF to 1.
