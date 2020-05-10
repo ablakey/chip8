@@ -20,7 +20,7 @@ fn main() -> Result<(), String> {
 
     // Load a program.
     let mut c8 = Chip8::init();
-    c8.load_rom(String::from("roms/particle_demo.c8")).unwrap();
+    c8.load_rom(String::from("roms/maze.c8")).unwrap();
 
     // Debug flags.
     let mut is_running = true;
@@ -35,12 +35,12 @@ fn main() -> Result<(), String> {
         // Handle clock rate.
         let now = clock.elapsed().unwrap().as_micros();
 
-        if now - last_cpu_tick > Chip8::CPU_FREQUENCY && is_running {
+        if now - last_cpu_tick > Chip8::CPU_FREQUENCY as u128 && is_running {
             c8.tick();
             last_cpu_tick = now;
         }
 
-        if now - last_timer_tick > Chip8::TIMER_FREQUENCY && is_running {
+        if now - last_timer_tick > Chip8::TIMER_FREQUENCY as u128 && is_running {
             c8.decrement_timers();
             last_timer_tick = now;
         }

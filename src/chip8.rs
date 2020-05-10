@@ -1,29 +1,17 @@
 #![allow(non_snake_case)]
-use num::Num;
 use pretty_hex::*;
 use rand::Rng;
 use std::fs::File;
 use std::io;
 use std::io::prelude::*;
 
-/// Type aliases to make the code more legible. We aren't going to support nibbles and
-/// triple-nibbles... tribbles? Hah! I tried to with a `ux` crate but the ergonomics were
-/// unpleasant. They couldn't interact with the built-in primitives so easily, if I recall. I
-/// am pretty sure that u4 and u12 not actually being those sizes will be fine, so long as we
-/// perform bitwise masking on them carefully. The most significant nibbles will just be 0.
-/// Rust won't type-check these though so I could pass a u4 where I meant to pass a u8.
-#[allow(non_camel_case_types)]
-pub type u4 = u8;
-#[allow(non_camel_case_types)]
-pub type u12 = u16;
-
 /// Add two values together, returning the result and if overflow occurred (1 or 0).
 /// The use of usize as overflow rather than boolean is for ergonomics of use in the context
 // of this emulator.
-fn add_overflow<T: Num>(x: usize, y: usize, max: usize) -> (usize, usize) {
+fn add_overflow(x: usize, y: usize, max: usize) -> (usize, usize) {
     let result = (x + y) / max;
     let overflow = (x + y) % max > 0;
-    (result, overflow)
+    (result, overflow as usize)
 }
 
 /// A structure of unpacked symbols from an OpCode.
@@ -35,55 +23,55 @@ fn add_overflow<T: Num>(x: usize, y: usize, max: usize) -> (usize, usize) {
 /// y: 4-bit register identifier
 #[derive(Debug)]
 struct OpCodeSymbols {
-    a: u4,
-    x: u4,
-    y: u4,
-    n: u4,
-    nn: u8,
-    nnn: u12,
+    a: usize,
+    x: usize,
+    y: usize,
+    n: usize,
+    nn: usize,
+    nnn: usize,
 }
 
 impl OpCodeSymbols {
     /// Return the symbols from an opcode's raw value.
     /// x and y need to be bit shifted to the least significant nibble before being casted to a
-    /// u4 (actually a u8).
-    fn from_value(opcode: u16) -> Self {
+    /// usize (actually a usize).
+    fn from_value(opcode: usize) -> Self {
         return Self {
-            a: ((opcode & 0xF000) >> 12) as u4,
-            x: ((opcode & 0x0F00) >> 8) as u4,
-            y: ((opcode & 0x00F0) >> 4) as u4,
-            n: (opcode & 0x000F) as u4,
-            nn: (opcode & 0x00FF) as u8,
-            nnn: (opcode & 0x0FFF) as u12,
+            a: ((opcode & 0xF000) >> 12),
+            x: ((opcode & 0x0F00) >> 8),
+            y: ((opcode & 0x00F0) >> 4),
+            n: (opcode & 0x000F),
+            nn: (opcode & 0x00FF),
+            nnn: (opcode & 0x0FFF),
         };
     }
 }
 
 #[derive(Clone)]
 pub struct Chip8 {
-    memory: [u8; 4096],
-    registers: [u8; 16], // 16 registers: V0 - VF
-    index_register: u16,
-    program_counter: u16,
+    memory: [usize; 4096],
+    registers: [usize; 16], // 16 registers: V0 - VF
+    index_register: usize,
+    program_counter: usize,
     pub graphics_buffer: [bool; 64 * 32], // 64 rows, 32 cols, row-major.
-    delay_timer: u8,
-    sound_timer: u8,
-    stack: [u16; 16],
+    delay_timer: usize,
+    sound_timer: usize,
+    stack: [usize; 16],
     stack_pointer: usize,
-    // keys: [u8; 16],
+    // keys: [usize; 16],
     pub has_graphics_update: bool,
 }
 
 /// Core feature implenentation.
 impl Chip8 {
-    pub const CPU_FREQUENCY: u128 = 2000; // microseconds -> 500Hz
-    pub const TIMER_FREQUENCY: u128 = 16667; // microseconds -> 60Hz
+    pub const CPU_FREQUENCY: usize = 2000; // microseconds -> 500Hz
+    pub const TIMER_FREQUENCY: usize = 16667; // microseconds -> 60Hz
 
     // Memory addresses (start, end).
-    // const ADDR_INTERPRETER: (u16, u16) = (0x000, 0x1FF);
-    // const ADDR_FONTSET: (u16, u16) = (0x050, 0x0A0);
-    const ADDRESS_ROM: u16 = 0x200;
-    const OPCODE_SIZE: u16 = 2;
+    // const ADDR_INTERPRETER: (usize, usize) = (0x000, 0x1FF);
+    // const ADDR_FONTSET: (usize, usize) = (0x050, 0x0A0);
+    const ADDRESS_ROM: usize = 0x200;
+    const OPCODE_SIZE: usize = 2;
 
     pub fn init() -> Self {
         Self {
@@ -102,9 +90,16 @@ impl Chip8 {
     }
 
     pub fn load_rom(&mut self, path: String) -> io::Result<()> {
-        let start = Chip8::ADDRESS_ROM as usize;
+        let start = Chip8::ADDRESS_ROM;
+        let mut buffer = Vec::new();
         let mut f = File::open(path)?;
-        f.read(&mut self.memory[start..])?;
+
+        f.read_to_end(&mut buffer)?;
+
+        for (idx, &value) in buffer.iter().enumerate() {
+            self.memory[idx + start] = value as usize;
+        }
+
         Ok(())
     }
 
@@ -114,9 +109,9 @@ impl Chip8 {
         self.has_graphics_update = false;
 
         // Get opcode by combining two bits from memory.
-        let low = self.memory[self.program_counter as usize + 1];
-        let high = self.memory[self.program_counter as usize];
-        let opcode = ((high as u16) << 8) | low as u16;
+        let low = self.memory[self.program_counter + 1];
+        let high = self.memory[self.program_counter];
+        let opcode = ((high) << 8) | low;
         let opcode_symbols = OpCodeSymbols::from_value(opcode);
         println!("opcode: {:x?}", opcode);
 
@@ -199,7 +194,7 @@ impl Chip8 {
     fn RTS(&mut self) {}
 
     // Jump to machine code routine at nnn. Not implemented in modern CHIP8 emulators.
-    fn SYS(&mut self, nnn: u12) {
+    fn SYS(&mut self, nnn: usize) {
         panic!(
             "opcode SYS not implemented. Attempted at address: {:#X}",
             nnn
@@ -207,12 +202,12 @@ impl Chip8 {
     }
 
     /// Jump PC to NNN.
-    fn JUMP(&mut self, nnn: u12) {
+    fn JUMP(&mut self, nnn: usize) {
         self.program_counter = nnn;
     }
 
     /// Call subroutine at NNN.
-    fn CALL(&mut self, nnn: u12) {
+    fn CALL(&mut self, nnn: usize) {
         // Maintain current PC in the stack to be able to return from subroutine.
         self.stack[self.stack_pointer] = self.program_counter;
         self.stack_pointer += 1;
@@ -220,107 +215,109 @@ impl Chip8 {
     }
 
     /// Skip next instruction if VX == NN.
-    fn SKE(&mut self, x: u4, nn: u8) {
-        if self.registers[x as usize] == nn {
+    fn SKE(&mut self, x: usize, nn: usize) {
+        if self.registers[x] == nn {
             self.program_counter += Chip8::OPCODE_SIZE;
         }
     }
 
     /// Skip next instruction if VX != NN.
-    fn SKNE(&mut self, x: u4, nn: u8) {
-        if self.registers[x as usize] != nn {
+    fn SKNE(&mut self, x: usize, nn: usize) {
+        if self.registers[x] != nn {
             self.program_counter += Chip8::OPCODE_SIZE;
         }
     }
 
     /// Skip next instruction if VX == VY;
-    fn SKRE(&mut self, x: u4, y: u4) {
-        if self.registers[x as usize] == self.registers[y as usize] {
+    fn SKRE(&mut self, x: usize, y: usize) {
+        if self.registers[x] == self.registers[y] {
             self.program_counter += Chip8::OPCODE_SIZE;
         }
     }
 
     /// Set register X to NN;
-    fn LOAD(&mut self, x: u4, nn: u8) {
-        self.registers[x as usize] = nn;
+    fn LOAD(&mut self, x: usize, nn: usize) {
+        self.registers[x] = nn;
     }
 
     /// Add NN to VX. Carry flag isn't changed.
-    fn ADD(&mut self, x: u4, nn: u8) {
-        self.registers[x as usize] += nn;
+    fn ADD(&mut self, x: usize, nn: usize) {
+        self.registers[x] += nn;
     }
 
     // Write VY to VX.
-    fn MOVE(&mut self, x: u4, y: u4) {
-        self.registers[x as usize] = self.registers[y as usize];
+    fn MOVE(&mut self, x: usize, y: usize) {
+        self.registers[x] = self.registers[y];
     }
 
-    fn OR(&mut self, x: u4, y: u4) {
+    fn OR(&mut self, x: usize, y: usize) {
         self.not_implemented();
     }
-    fn AND(&mut self, x: u4, y: u4) {
+    fn AND(&mut self, x: usize, y: usize) {
         self.not_implemented();
     }
-    fn XOR(&mut self, x: u4, y: u4) {
+    fn XOR(&mut self, x: usize, y: usize) {
         self.not_implemented();
     }
-    fn ADDR(&mut self, x: u4, y: u4) {
-        let vx = self.registers[x as usize];
-        let vy = self.registers[y as usize];
+
+    fn ADDR(&mut self, x: usize, y: usize) {
+        let vx = self.registers[x];
+        let vy = self.registers[y];
 
         // TODO: add_overflow should be generic where T is whatever type the third argument is. It returns this type.
-        let (result, overflow) = add_overflow(vx as usize, vy as usize, std::u8::MAX as usize);
+        let (result, overflow) = add_overflow(vx, vy, std::usize::MAX);
 
-        self.registers[0xF] = overflow as u8;
+        self.registers[0xF] = overflow;
 
         // Range overflow?
-        self.registers[0xF] = if self.index_register as usize + vx as usize > 0xFFF {
+        self.registers[0xF] = if self.index_register + vx > 0xFFF {
             1
         } else {
             0
         };
 
-        self.registers[x as usize] = vx + vy;
+        self.registers[x] = vx + vy;
     }
-    fn SUB(&mut self, x: u4, y: u4) {
+
+    fn SUB(&mut self, x: usize, y: usize) {
         self.not_implemented();
     }
-    fn SHR(&mut self, x: u4, y: u4) {
+    fn SHR(&mut self, x: usize, y: usize) {
         self.not_implemented();
     }
-    fn SUBN(&mut self, x: u4, y: u4) {
+    fn SUBN(&mut self, x: usize, y: usize) {
         self.not_implemented();
     }
-    fn SHL(&mut self, x: u4, y: u4) {
+    fn SHL(&mut self, x: usize, y: usize) {
         self.not_implemented();
     }
-    fn SKRNE(&mut self, x: u4, y: u4) {
+    fn SKRNE(&mut self, x: usize, y: usize) {
         self.not_implemented();
     }
 
     /// Set index register to NNN.
-    fn LOADI(&mut self, nnn: u12) {
+    fn LOADI(&mut self, nnn: usize) {
         self.index_register = nnn;
     }
 
-    fn JUMPI(&mut self, nnn: u12) {
+    fn JUMPI(&mut self, nnn: usize) {
         self.not_implemented();
     }
 
     /// Set VX to result of bitwise: NN & RANDOM
-    fn RAND(&mut self, x: u4, nn: u8) {
+    fn RAND(&mut self, x: usize, nn: usize) {
         let rand = rand::thread_rng().gen_range(0, 255) & nn;
-        self.registers[x as usize] = rand;
+        self.registers[x] = rand;
     }
 
     /// Draws N sprite lines from memory[I] to coordinates (VX, VY). VF is set high if collision.
-    fn DRAW(&mut self, x: u4, y: u4, n: u4) {
+    fn DRAW(&mut self, x: usize, y: usize, n: usize) {
         // Read n bytes from memory starting at I.
-        let start = self.index_register as usize;
-        let end = self.index_register as usize + n as usize;
+        let start = self.index_register;
+        let end = self.index_register + n;
 
-        let vx = self.registers[x as usize];
-        let vy = self.registers[y as usize];
+        let vx = self.registers[x];
+        let vy = self.registers[y];
 
         for (row, &pixels) in self.memory[start..end].iter().enumerate() {
             for col in 0..8 {
@@ -328,7 +325,7 @@ impl Chip8 {
                 // If it is 1, do collision detection and set the pixel.
                 if pixels & 0x80 >> col > 0 {
                     // Get current pixel.
-                    let idx = vx as usize + col as usize + ((vy as usize + row) * 64);
+                    let idx = vx + col + ((vy + row) * 64);
                     let current_pixel = self.graphics_buffer[idx];
 
                     // If collision, set VF to 1.
@@ -337,38 +334,38 @@ impl Chip8 {
                     }
 
                     // Update the pixel with XOR.
-                    self.graphics_buffer[idx as usize] = current_pixel ^ true;
+                    self.graphics_buffer[idx] = current_pixel ^ true;
                 }
             }
         }
 
         self.has_graphics_update = true;
     }
-    fn SKPR(&mut self, x: u4) {
+    fn SKPR(&mut self, x: usize) {
         self.not_implemented();
     }
-    fn SKUP(&mut self, x: u4) {
+    fn SKUP(&mut self, x: usize) {
         self.not_implemented();
     }
-    fn MOVED(&mut self, x: u4) {
+    fn MOVED(&mut self, x: usize) {
         self.not_implemented();
     }
-    fn KEYD(&mut self, x: u4) {
+    fn KEYD(&mut self, x: usize) {
         self.not_implemented();
     }
-    fn LOADD(&mut self, x: u4) {
+    fn LOADD(&mut self, x: usize) {
         self.not_implemented();
     }
-    fn LOADS(&mut self, x: u4) {
+    fn LOADS(&mut self, x: usize) {
         self.not_implemented();
     }
 
     /// Add VX to I.  VF set to 1 if there is an overflow, else 0.
-    fn ADDI(&mut self, x: u4) {
-        let vx = self.registers[x as usize] as u16;
+    fn ADDI(&mut self, x: usize) {
+        let vx = self.registers[x];
 
         // Range overflow?
-        self.registers[0xF] = if self.index_register as usize + vx as usize > 0xFFF {
+        self.registers[0xF] = if self.index_register + vx > 0xFFF {
             1
         } else {
             0
@@ -378,16 +375,16 @@ impl Chip8 {
         self.index_register += vx; // TODO: can panic.
     }
 
-    fn LDSPR(&mut self, x: u4) {
+    fn LDSPR(&mut self, x: usize) {
         self.not_implemented();
     }
-    fn BCD(&mut self, x: u4) {
+    fn BCD(&mut self, x: usize) {
         self.not_implemented();
     }
-    fn STOR(&mut self, x: u4) {
+    fn STOR(&mut self, x: usize) {
         self.not_implemented();
     }
-    fn READ(&mut self, x: u4) {
+    fn READ(&mut self, x: usize) {
         self.not_implemented();
     }
 }
@@ -402,8 +399,16 @@ impl Chip8 {
     }
 
     pub fn print_mem(&self) {
-        let start = Chip8::ADDRESS_ROM as usize;
-        println!("{:?}", self.memory[start..start + 200].to_vec().hex_dump());
+        let start = Chip8::ADDRESS_ROM;
+        println!(
+            "{:?}",
+            self.memory[start..start + 200]
+                .to_vec()
+                .iter()
+                .map(|&f| f as u8)
+                .collect::<Vec<u8>>()
+                .hex_dump()
+        );
     }
 
     fn not_implemented(&self) {
@@ -417,7 +422,7 @@ impl Chip8 {
 mod tests {
     use super::*;
 
-    const TEST_ROM_BYTES: &[u8] = &[
+    const TEST_ROM_BYTES: &[usize] = &[
         96, 0, 97, 0, 162, 34, 194, 1, 50, 1, 162, 30, 208, 20, 112, 4, 48, 64, 18, 4, 96, 0, 113,
         4, 49, 32, 18, 4, 18, 28, 128, 64, 32, 16, 32, 64, 128, 16,
     ];
@@ -434,7 +439,7 @@ mod tests {
     fn test_load_rom() {
         let mut machine = Chip8::init();
         machine.load_rom(String::from("roms/maze.c8")).unwrap();
-        let start = Chip8::ADDRESS_ROM as usize;
+        let start = Chip8::ADDRESS_ROM;
         let end = start + TEST_ROM_BYTES.len();
         assert_eq!(&machine.memory[start..end], TEST_ROM_BYTES);
     }
