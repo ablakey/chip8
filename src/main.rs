@@ -1,57 +1,67 @@
 mod chip8;
-mod graphics;
+mod input;
+mod screen;
 use chip8::Chip8;
-use graphics::Screen;
-use sdl2::event::Event;
-use sdl2::keyboard::Keycode;
-use std::{thread, time};
+use input::{Input, InputEvent};
+use screen::Screen;
+use std::thread::sleep;
+use std::time::{Duration, SystemTime};
 
 fn main() -> Result<(), String> {
-    // Init SDL components (the CHIP8 I/O)
+    // Init I/O components
     let sdl_context = sdl2::init()?;
-    let mut event_pump = sdl_context.event_pump()?;
+    let mut input = Input::init(&sdl_context)?;
     let mut screen = Screen::create(&sdl_context, 30)?;
 
+    // Init "system clock".
+    let clock = SystemTime::now();
+    let mut last_cpu_tick: u128 = 0;
+    let mut last_timer_tick: u128 = 0;
+
     // Load a program.
-    let mut machine = Chip8::init();
-    machine
-        .load_rom(String::from("roms/particle_demo.c8"))
-        .unwrap();
+    let mut c8 = Chip8::init();
+    c8.load_rom(String::from("roms/particle_demo.c8")).unwrap();
 
-    machine.print_mem();
+    // Debug flags.
+    let mut is_running = true;
 
-    'running: loop {
-        // Advance the program at about 500hz (8.33 ticks per cycle.)
-        // Note: we are rounding to 8 for simplicity, meaning the emulator runs a bit slow.
-        for _ in 0..8 {
-            machine.tick();
+    c8.print_mem();
+
+    // Loop controls the application, including debug tools.
+    // It ticks at a very high frequency to more accurately count delta time between ticks.
+    // The CPU runs at 500hz while the timers run at 60Hz.
+    // The screen is drawn on any opcode that has changed the graphics buffer.
+    'program: loop {
+        // Handle clock rate.
+        let now = clock.elapsed().unwrap().as_micros();
+
+        if now - last_cpu_tick > Chip8::CPU_FREQUENCY && is_running {
+            c8.tick();
+            last_cpu_tick = now;
         }
 
-        machine.decrement_timers();
+        if now - last_timer_tick > Chip8::TIMER_FREQUENCY && is_running {
+            c8.decrement_timers();
+            last_timer_tick = now;
+        }
+
+        // Handle I/O.
+        match input.get_event() {
+            InputEvent::Exit => break 'program,
+            InputEvent::ToggleRun => is_running = !is_running,
+            _ => (),
+        }
 
         // Draw to screen?
-        if machine.has_graphics_update {
-            screen.draw(&machine.graphics_buffer);
+        if c8.has_graphics_update {
+            screen.draw(&c8.graphics_buffer);
         }
 
-        // Handle keyboard/event input.
-        for event in event_pump.poll_iter() {
-            match event {
-                Event::Quit { .. }
-                | Event::KeyDown {
-                    keycode: Some(Keycode::Escape),
-                    ..
-                } => {
-                    break 'running;
-                }
-                _ => {}
-            }
-        }
-
-        // Loop at ~ 60hz.
-        // Note: this speeds the emulator up (16ms vs. 16.66ms). It also means we sleep for  at
-        // least 16ms but could be more. We should implement something more robust.
-        thread::sleep(time::Duration::from_millis(16));
+        // Cool the hot loop down, but always be faster than CPU_FREQUENCY to avoid runnin not
+        // often enough. We loop twice as fast to attempt this, but ultimately it's up to the host
+        // machine to yield back often enough. This is kind of sloppy, but the difference is between
+        // 100% of a core and 2%, so it beats nothing.
+        sleep(Duration::new(0, (Chip8::CPU_FREQUENCY * 1000 / 2) as u32))
     }
 
     Ok(())

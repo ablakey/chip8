@@ -1,4 +1,5 @@
 #![allow(non_snake_case)]
+use num::Num;
 use pretty_hex::*;
 use rand::Rng;
 use std::fs::File;
@@ -15,6 +16,15 @@ use std::io::prelude::*;
 pub type u4 = u8;
 #[allow(non_camel_case_types)]
 pub type u12 = u16;
+
+/// Add two values together, returning the result and if overflow occurred (1 or 0).
+/// The use of usize as overflow rather than boolean is for ergonomics of use in the context
+// of this emulator.
+fn add_overflow<T: Num>(x: usize, y: usize, max: usize) -> (usize, usize) {
+    let result = (x + y) / max;
+    let overflow = (x + y) % max > 0;
+    (result, overflow)
+}
 
 /// A structure of unpacked symbols from an OpCode.
 /// Not all symbols (and sometimes no symbols) are valid, depending on what the opcode is.
@@ -49,6 +59,7 @@ impl OpCodeSymbols {
     }
 }
 
+#[derive(Clone)]
 pub struct Chip8 {
     memory: [u8; 4096],
     registers: [u8; 16], // 16 registers: V0 - VF
@@ -65,6 +76,9 @@ pub struct Chip8 {
 
 /// Core feature implenentation.
 impl Chip8 {
+    pub const CPU_FREQUENCY: u128 = 2000; // microseconds -> 500Hz
+    pub const TIMER_FREQUENCY: u128 = 16667; // microseconds -> 60Hz
+
     // Memory addresses (start, end).
     // const ADDR_INTERPRETER: (u16, u16) = (0x000, 0x1FF);
     // const ADDR_FONTSET: (u16, u16) = (0x050, 0x0A0);
@@ -251,7 +265,22 @@ impl Chip8 {
         self.not_implemented();
     }
     fn ADDR(&mut self, x: u4, y: u4) {
-        self.not_implemented();
+        let vx = self.registers[x as usize];
+        let vy = self.registers[y as usize];
+
+        // TODO: add_overflow should be generic where T is whatever type the third argument is. It returns this type.
+        let (result, overflow) = add_overflow(vx as usize, vy as usize, std::u8::MAX as usize);
+
+        self.registers[0xF] = overflow as u8;
+
+        // Range overflow?
+        self.registers[0xF] = if self.index_register as usize + vx as usize > 0xFFF {
+            1
+        } else {
+            0
+        };
+
+        self.registers[x as usize] = vx + vy;
     }
     fn SUB(&mut self, x: u4, y: u4) {
         self.not_implemented();
@@ -339,14 +368,14 @@ impl Chip8 {
         let vx = self.registers[x as usize] as u16;
 
         // Range overflow?
-        if self.index_register as usize + vx as usize > 0xFFF {
-            self.registers[0xF] = 1;
+        self.registers[0xF] = if self.index_register as usize + vx as usize > 0xFFF {
+            1
         } else {
-            self.registers[0xF] = 0;
-        }
+            0
+        };
 
         // Add with possible overflow.
-        self.index_register += vx;
+        self.index_register += vx; // TODO: can panic.
     }
 
     fn LDSPR(&mut self, x: u4) {
@@ -364,7 +393,7 @@ impl Chip8 {
 }
 
 /// Debug functions.
-#[cfg(debug_assertions)]
+// #[cfg(debug_assertions)]
 impl Chip8 {
     pub fn print_debug(&self) {
         println!("PC: {}", self.program_counter);
