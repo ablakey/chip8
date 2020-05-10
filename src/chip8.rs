@@ -5,15 +5,6 @@ use std::fs::File;
 use std::io;
 use std::io::prelude::*;
 
-/// Add two values together, returning the result and if overflow occurred (1 or 0).
-/// The use of usize as overflow rather than boolean is for ergonomics of use in the context
-// of this emulator.
-fn add_overflow(x: usize, y: usize, max: usize) -> (usize, usize) {
-    let result = (x + y) / max;
-    let overflow = (x + y) % max > 0;
-    (result, overflow as usize)
-}
-
 /// A structure of unpacked symbols from an OpCode.
 /// Not all symbols (and sometimes no symbols) are valid, depending on what the opcode is.
 /// n: 4-bit constant
@@ -49,10 +40,10 @@ impl OpCodeSymbols {
 
 #[derive(Clone)]
 pub struct Chip8 {
-    memory: [usize; 4096],
-    registers: [usize; 16], // 16 registers: V0 - VF
-    index_register: usize,
-    program_counter: usize,
+    memory: [usize; 4096],                // 4k of 8 bit memory.
+    registers: [usize; 16],               // 16  8-bit registers: V0 - VF
+    index_register: usize,                // 16-bit register (for memory addressing)
+    program_counter: usize,               // 16-bit program counter.
     pub graphics_buffer: [bool; 64 * 32], // 64 rows, 32 cols, row-major.
     delay_timer: usize,
     sound_timer: usize,
@@ -117,7 +108,7 @@ impl Chip8 {
 
         self.execute_opcode(&opcode_symbols);
 
-        // Increment PC unless opcode is JUMP or CALL.
+        // Increment PC unless opcode is JUMP, JUMPI, or CALL.
         if ![0xB, 0x2, 0x1].contains(&opcode_symbols.a) {
             self.program_counter += Chip8::OPCODE_SIZE;
         }
@@ -242,41 +233,36 @@ impl Chip8 {
 
     /// Add NN to VX. Carry flag isn't changed.
     fn ADD(&mut self, x: usize, nn: usize) {
-        self.registers[x] += nn;
+        self.registers[x] = (self.registers[x] + nn) / 0x100
     }
 
-    // Write VY to VX.
+    /// Write VY to VX.
     fn MOVE(&mut self, x: usize, y: usize) {
         self.registers[x] = self.registers[y];
     }
 
+    /// VX = VX | VY.
     fn OR(&mut self, x: usize, y: usize) {
-        self.not_implemented();
-    }
-    fn AND(&mut self, x: usize, y: usize) {
-        self.not_implemented();
-    }
-    fn XOR(&mut self, x: usize, y: usize) {
-        self.not_implemented();
+        self.registers[x] = self.registers[x] | self.registers[y];
     }
 
+    /// VX = VX & VY.
+    fn AND(&mut self, x: usize, y: usize) {
+        self.registers[x] = self.registers[x] & self.registers[y];
+    }
+
+    /// VX = VX ^ VY.
+    fn XOR(&mut self, x: usize, y: usize) {
+        self.registers[x] = self.registers[x] ^ self.registers[y];
+    }
+
+    /// Add VX to VY. Set VF to 1 if overflow, else 0.
     fn ADDR(&mut self, x: usize, y: usize) {
         let vx = self.registers[x];
         let vy = self.registers[y];
 
-        // TODO: add_overflow should be generic where T is whatever type the third argument is. It returns this type.
-        let (result, overflow) = add_overflow(vx, vy, std::usize::MAX);
-
-        self.registers[0xF] = overflow;
-
-        // Range overflow?
-        self.registers[0xF] = if self.index_register + vx > 0xFFF {
-            1
-        } else {
-            0
-        };
-
-        self.registers[x] = vx + vy;
+        self.registers[0xF] = if vx + vy >= 0x100 { 1 } else { 0 };
+        self.registers[x] = (vx + vy) / 0x100;
     }
 
     fn SUB(&mut self, x: usize, y: usize) {
@@ -291,8 +277,12 @@ impl Chip8 {
     fn SHL(&mut self, x: usize, y: usize) {
         self.not_implemented();
     }
+
+    /// Skip next instruction if VX != VY.
     fn SKRNE(&mut self, x: usize, y: usize) {
-        self.not_implemented();
+        if self.registers[x] == self.registers[y] {
+            self.program_counter += Chip8::OPCODE_SIZE;
+        }
     }
 
     /// Set index register to NNN.
@@ -301,7 +291,7 @@ impl Chip8 {
     }
 
     fn JUMPI(&mut self, nnn: usize) {
-        self.not_implemented();
+        self.program_counter = self.registers[0] + nnn;
     }
 
     /// Set VX to result of bitwise: NN & RANDOM
@@ -347,32 +337,33 @@ impl Chip8 {
     fn SKUP(&mut self, x: usize) {
         self.not_implemented();
     }
+
+    /// Load Delay Timer into VX.
     fn MOVED(&mut self, x: usize) {
-        self.not_implemented();
+        self.registers[x] = self.delay_timer;
     }
+
     fn KEYD(&mut self, x: usize) {
         self.not_implemented();
     }
+
+    /// Set Delay Timer to VX.
     fn LOADD(&mut self, x: usize) {
-        self.not_implemented();
+        self.delay_timer = self.registers[x];
     }
+
+    /// Set Sound Timer to VX.
     fn LOADS(&mut self, x: usize) {
-        self.not_implemented();
+        self.sound_timer = self.registers[x];
     }
 
     /// Add VX to I.  VF set to 1 if there is an overflow, else 0.
     fn ADDI(&mut self, x: usize) {
         let vx = self.registers[x];
+        let i = self.index_register;
 
-        // Range overflow?
-        self.registers[0xF] = if self.index_register + vx > 0xFFF {
-            1
-        } else {
-            0
-        };
-
-        // Add with possible overflow.
-        self.index_register += vx; // TODO: can panic.
+        self.registers[0xF] = if vx + i >= 0x1000 { 1 } else { 0 };
+        self.index_register = (vx + i) / 0x1000
     }
 
     fn LDSPR(&mut self, x: usize) {
