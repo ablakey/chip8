@@ -1,5 +1,5 @@
 use sdl2::event::Event;
-use sdl2::keyboard::Keycode;
+use sdl2::keyboard::{Keycode, Scancode};
 use sdl2::EventPump;
 
 #[derive(PartialEq)]
@@ -14,6 +14,25 @@ pub struct Input {
 }
 
 impl Input {
+    const KEY_BINDINGS: [Scancode; 16] = [
+        Scancode::X,
+        Scancode::Num1,
+        Scancode::Num2,
+        Scancode::Num3,
+        Scancode::Q,
+        Scancode::W,
+        Scancode::E,
+        Scancode::A,
+        Scancode::S,
+        Scancode::D,
+        Scancode::Z,
+        Scancode::C,
+        Scancode::Num4,
+        Scancode::R,
+        Scancode::F,
+        Scancode::V,
+    ];
+
     pub fn init(context: &sdl2::Sdl) -> Result<Self, String> {
         let event_pump = context.event_pump()?;
 
@@ -37,6 +56,7 @@ impl Input {
                     keycode: Some(Keycode::Space),
                     ..
                 } => InputEvent::ToggleRun,
+                Event::KeyDown { .. } => InputEvent::None,
                 _ => InputEvent::None,
             };
 
@@ -46,5 +66,40 @@ impl Input {
         }
 
         return x;
+    }
+
+    /// Get The state of the 16 input keys Chip8 has.
+    /// These keys are 0-F (but are typically laid out in a grid pattern). The returned array
+    /// Represents the state of each key: 0-F
+    ///The typical CHIP8 controller looks like the diagram below.
+    /// The 2,4,6,8 are typically used as arrows.
+    /// ```
+    /// ╔═══╦═══╦═══╦═══╗
+    /// ║ 1 ║ 2 ║ 3 ║ C ║
+    /// ╠═══╬═══╬═══╬═══╣
+    /// ║ 4 ║ 5 ║ 6 ║ D ║
+    /// ╠═══╬═══╬═══╬═══╣
+    /// ║ 7 ║ 8 ║ 9 ║ E ║
+    /// ╠═══╬═══╬═══╬═══╣
+    /// ║ A ║ 0 ║ B ║ F ║
+    /// ╚═══╩═══╩═══╩═══╝
+    /// ```
+    pub fn get_chip8_keys(&mut self) -> [bool; 16] {
+        let keys: Vec<Scancode> = self
+            .event_pump
+            .keyboard_state()
+            .pressed_scancodes()
+            .collect();
+
+        // Hard coded binding of keyboard to keys.  We use the left 16 keys in the same grid pattern
+        // which means none of the letters/numbers align, but the shape does.
+        let key_states = Self::KEY_BINDINGS
+            .iter()
+            .map(|b| keys.contains(b))
+            .collect::<Vec<bool>>();
+
+        let mut foo = [false; 16];
+        foo.copy_from_slice(&key_states[..]);
+        return foo;
     }
 }

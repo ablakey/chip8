@@ -23,7 +23,7 @@ fn main() -> Result<(), String> {
     c8.load_rom(String::from("roms/maze.c8")).unwrap();
 
     // Debug flags.
-    let mut is_running = true;
+    let mut paused = false;
 
     c8.print_mem();
 
@@ -35,33 +35,41 @@ fn main() -> Result<(), String> {
         // Handle clock rate.
         let now = clock.elapsed().unwrap().as_micros();
 
-        if now - last_cpu_tick > Chip8::CPU_FREQUENCY as u128 && is_running {
-            c8.tick();
-            last_cpu_tick = now;
-        }
-
-        if now - last_timer_tick > Chip8::TIMER_FREQUENCY as u128 && is_running {
-            c8.decrement_timers();
-            last_timer_tick = now;
-        }
-
-        // Handle I/O.
+        // Handle emulator I/O (the inputs not destined for the Chip8).
         match input.get_event() {
             InputEvent::Exit => break 'program,
-            InputEvent::ToggleRun => is_running = !is_running,
+            InputEvent::ToggleRun => paused = !paused,
             _ => (),
         }
 
-        // Draw to screen?
-        if c8.has_graphics_update {
-            screen.draw(&c8.graphics_buffer);
+        // Do not run the machine if the emulator has paused it.
+        if !paused {
+            // Write keyboard state from I/O to emulator memory.
+            c8.set_keys(input.get_chip8_keys());
+
+            // CPU tick?
+            if now - last_cpu_tick > Chip8::CPU_FREQUENCY as u128 && !c8.wait_for_input {
+                c8.tick();
+                last_cpu_tick = now;
+            }
+
+            // timer tick?
+            if now - last_timer_tick > Chip8::TIMER_FREQUENCY as u128 {
+                c8.decrement_timers();
+                last_timer_tick = now;
+            }
+
+            // Draw to screen?
+            if c8.has_graphics_update {
+                screen.draw(&c8.graphics_buffer);
+            }
         }
 
-        // Cool the hot loop down, but always be faster than CPU_FREQUENCY to avoid runnin not
-        // often enough. We loop twice as fast to attempt this, but ultimately it's up to the host
-        // machine to yield back often enough. This is kind of sloppy, but the difference is between
-        // 100% of a core and 2%, so it beats nothing.
-        sleep(Duration::new(0, (Chip8::CPU_FREQUENCY * 1000 / 2) as u32))
+        // Sleep this hot loop at the same rate as the CPU (the most frequent thing).
+        // In a more accurate emulator, there's better ways to handle this, given it's possible
+        // that we sleep too long and never tick the CPU regularly enough.  We would also have to
+        // handle "speeding up" to catch up with the expected frequency in that case.
+        sleep(Duration::new(0, (Chip8::CPU_FREQUENCY * 1000) as u32))
     }
 
     Ok(())

@@ -49,8 +49,9 @@ pub struct Chip8 {
     sound_timer: usize,
     stack: [usize; 16],
     stack_pointer: usize,
-    // keys: [usize; 16],
+    keys: [bool; 16],
     pub has_graphics_update: bool,
+    pub wait_for_input: bool, // Should main loop wait for input before being able to tick?
 }
 
 /// Core feature implenentation.
@@ -75,8 +76,9 @@ impl Chip8 {
             sound_timer: 0,
             stack: [0; 16],
             stack_pointer: 0,
-            // keys: [0; 16],
+            keys: [false; 16],
             has_graphics_update: false,
+            wait_for_input: false,
         }
     }
 
@@ -124,6 +126,13 @@ impl Chip8 {
         if self.sound_timer > 0 {
             self.sound_timer -= 1;
         }
+    }
+
+    /// Set the current state of all keys into the machine's memory.
+    pub fn set_keys(&mut self, keys: [bool; 16]) {
+        self.keys = keys;
+        // TODO: if any key state changes from false to true AND we are halted, perform the
+        // rest of that opcode (write state to register) and then unpause the machine.
     }
 
     fn execute_opcode(&mut self, opcode_symbols: &OpCodeSymbols) {
