@@ -56,9 +56,6 @@ pub struct Chip8 {
 
 /// Core feature implenentation.
 impl Chip8 {
-    pub const CPU_FREQUENCY: usize = 2000; // microseconds -> 500Hz
-    pub const TIMER_FREQUENCY: usize = 16667; // microseconds -> 60Hz
-
     // Memory addresses (start, end).
     // const ADDR_INTERPRETER: (usize, usize) = (0x000, 0x1FF);
     // const ADDR_FONTSET: (usize, usize) = (0x050, 0x0A0);
@@ -96,26 +93,6 @@ impl Chip8 {
         Ok(())
     }
 
-    /// Execute the next opcode.
-    pub fn tick(&mut self) {
-        // Reset flags.
-        self.has_graphics_update = false;
-
-        // Get opcode by combining two bits from memory.
-        let low = self.memory[self.program_counter + 1];
-        let high = self.memory[self.program_counter];
-        let opcode = ((high) << 8) | low;
-        let opcode_symbols = OpCodeSymbols::from_value(opcode);
-        println!("opcode: {:x?}", opcode);
-
-        self.execute_opcode(&opcode_symbols);
-
-        // Increment PC unless opcode is JUMP, JUMPI, or CALL.
-        if ![0xB, 0x2, 0x1].contains(&opcode_symbols.a) {
-            self.program_counter += Chip8::OPCODE_SIZE;
-        }
-    }
-
     /// Decrement both sound and delay timers.
     /// This should be getting called at 60hz by the emulator's controller.
     pub fn decrement_timers(&mut self) {
@@ -135,11 +112,28 @@ impl Chip8 {
         // rest of that opcode (write state to register) and then unpause the machine.
     }
 
-    fn execute_opcode(&mut self, opcode_symbols: &OpCodeSymbols) {
-        #[rustfmt::skip]
-    // These are possible opcode symbols, not all of which are valid. Depending on the matched
-    // opcode, some of the symbols may be used.
-    let OpCodeSymbols { a, x, y, n, nnn, nn } = *opcode_symbols;
+    pub fn execute_opcode(&mut self) {
+        // These are possible opcode symbols, not all of which are valid. Depending on the matched
+        // opcode, some of the symbols may be used.
+
+        // Reset flags.
+        self.has_graphics_update = false;
+
+        // Get opcode by combining two bits from memory.
+        let low = self.memory[self.program_counter + 1];
+        let high = self.memory[self.program_counter];
+        let opcode = ((high) << 8) | low;
+        let opcode_symbols = OpCodeSymbols::from_value(opcode);
+        println!("opcode: {:x?}", opcode);
+
+        let OpCodeSymbols {
+            a,
+            x,
+            y,
+            n,
+            nnn,
+            nn,
+        } = opcode_symbols;
 
         // The order of these match branches are important.
         // Some opcodes are more specific than others.
@@ -181,6 +175,11 @@ impl Chip8 {
             (0xF, _, 6, 5) => self.READ(x),
             (_, _, _, _) => panic!("Tried to call {:?} but isn't handled.", opcode_symbols),
         };
+
+        // Increment PC unless opcode is JUMP, JUMPI, or CALL.
+        if ![0xB, 0x2, 0x1].contains(&opcode_symbols.a) {
+            self.program_counter += Chip8::OPCODE_SIZE;
+        }
     }
 }
 /// Opcode implementation.
@@ -191,7 +190,12 @@ impl Chip8 {
         self.has_graphics_update = true;
     }
 
-    fn RTS(&mut self) {}
+    /// Return from subroutine.
+    fn RTS(&mut self) {
+        self.program_counter = self.stack[self.stack_pointer];
+        self.stack_pointer -= 1;
+        self.print_debug();
+    }
 
     // Jump to machine code routine at nnn. Not implemented in modern CHIP8 emulators.
     fn SYS(&mut self, nnn: usize) {
@@ -242,7 +246,7 @@ impl Chip8 {
 
     /// Add NN to VX. Carry flag isn't changed.
     fn ADD(&mut self, x: usize, nn: usize) {
-        self.registers[x] = (self.registers[x] + nn) / 0x100
+        self.registers[x] = (self.registers[x] + nn) % 0x100
     }
 
     /// Write VY to VX.
@@ -271,7 +275,7 @@ impl Chip8 {
         let vy = self.registers[y];
 
         self.registers[0xF] = if vx + vy >= 0x100 { 1 } else { 0 };
-        self.registers[x] = (vx + vy) / 0x100;
+        self.registers[x] = (vx + vy) % 0x100;
     }
 
     fn SUB(&mut self, x: usize, y: usize) {
@@ -283,8 +287,13 @@ impl Chip8 {
     fn SUBN(&mut self, x: usize, y: usize) {
         self.not_implemented();
     }
+
+    /// Store most-significant bit of VX in VF then shift VX left by 1.
     fn SHL(&mut self, x: usize, y: usize) {
-        self.not_implemented();
+        let vx = self.registers[x];
+        self.registers[0xF] = x & 0x80;
+
+        self.registers[x] = (vx << 1) & 0xFF;
     }
 
     /// Skip next instruction if VX != VY.
@@ -372,7 +381,7 @@ impl Chip8 {
         let i = self.index_register;
 
         self.registers[0xF] = if vx + i >= 0x1000 { 1 } else { 0 };
-        self.index_register = (vx + i) / 0x1000
+        self.index_register = (vx + i) % 0x1000
     }
 
     fn LDSPR(&mut self, x: usize) {
@@ -384,8 +393,12 @@ impl Chip8 {
     fn STOR(&mut self, x: usize) {
         self.not_implemented();
     }
+
+    /// Populate registers V0 to VX with data starting at I.
     fn READ(&mut self, x: usize) {
-        self.not_implemented();
+        for n in 0..x + 1 {
+            self.registers[n] = self.memory[self.index_register + n];
+        }
     }
 }
 
@@ -393,9 +406,11 @@ impl Chip8 {
 // #[cfg(debug_assertions)]
 impl Chip8 {
     pub fn print_debug(&self) {
-        println!("PC: {}", self.program_counter);
-        println!("I: {}", self.index_register);
-        println!("Registers: {:x?}", self.registers)
+        println!("PC: {:x}", self.program_counter);
+        println!("SP: {:x}", self.stack_pointer);
+        println!("I: {:x}", self.index_register);
+        println!("Registers: {:x?}", self.registers);
+        println!("Stack: {:x?}", self.stack);
     }
 
     pub fn print_mem(&self) {
@@ -442,18 +457,6 @@ mod tests {
         let start = Chip8::ADDRESS_ROM;
         let end = start + TEST_ROM_BYTES.len();
         assert_eq!(&machine.memory[start..end], TEST_ROM_BYTES);
-    }
-
-    /// The CLR opcode must set all graphics to 0, set the graphics update flag, and increment
-    // the program counter.
-    #[test]
-    fn test_opcode_clr() {
-        let mut machine = Chip8::init();
-        let opcode_symbols = OpCodeSymbols::from_value(0x00E0);
-        machine.execute_opcode(&opcode_symbols);
-
-        assert!(machine.graphics_buffer.iter().all(|&n| !n));
-        assert!(machine.has_graphics_update);
     }
 
     /// Timers should decrement by 1 each time `decrement_timers` is called, but never fall below 0.

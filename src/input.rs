@@ -7,6 +7,7 @@ pub enum InputEvent {
     None,
     Exit,
     ToggleRun,
+    Tick,
 }
 
 pub struct Input {
@@ -14,6 +15,8 @@ pub struct Input {
 }
 
 impl Input {
+    // Binding each of the Chip8's keys to a real keyboard key. Chip8 has 16 keys: 0-F. Each is an
+    // index in this array. See get_chip8_keys for details.
     const KEY_BINDINGS: [Scancode; 16] = [
         Scancode::X,
         Scancode::Num1,
@@ -56,6 +59,10 @@ impl Input {
                     keycode: Some(Keycode::Space),
                     ..
                 } => InputEvent::ToggleRun,
+                Event::KeyUp {
+                    keycode: Some(Keycode::Right),
+                    ..
+                } => InputEvent::Tick,
                 Event::KeyDown { .. } => InputEvent::None,
                 _ => InputEvent::None,
             };
