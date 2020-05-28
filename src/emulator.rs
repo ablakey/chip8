@@ -30,7 +30,10 @@ impl Emulator {
         if self.cycle % 8 == 0 {
             self.state.decrement_timers();
         }
+    }
 
-        // self.state.print_debug();
+    pub fn get_debug_info(&self) -> String {
+        let debug = self.state.format_debug();
+        format!("\nCycle #: {}\n{}", self.cycle, debug)
     }
 }

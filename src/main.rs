@@ -31,7 +31,7 @@ fn main() -> Result<(), String> {
 
     // Print out initial debug state.
     debugger.write(emu.state.format_memory());
-    debugger.write(emu.state.format_debug());
+    debugger.write(emu.get_debug_info());
 
     'program: loop {
         // Handle emu I/O (the inputs not destined for the Chip8).
@@ -40,7 +40,7 @@ fn main() -> Result<(), String> {
             InputEvent::ToggleRun => emu.paused = !emu.paused,
             InputEvent::Tick => {
                 emu.tick();
-                debugger.overwrite(emu.state.format_debug());
+                debugger.overwrite(emu.get_debug_info());
             }
             _ => (),
         }
@@ -51,6 +51,7 @@ fn main() -> Result<(), String> {
 
             // Advance the emu one tick.
             emu.tick();
+            debugger.overwrite(emu.get_debug_info());
         }
 
         // Draw screen.
