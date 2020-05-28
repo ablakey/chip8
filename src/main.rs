@@ -47,11 +47,12 @@ fn main() -> Result<(), String> {
 
         if !emu.paused {
             // Write key states to emu's memory.
+            // TODO: maybe don't run this at 500hz.
             emu.state.set_keys(input.get_chip8_keys());
 
             // Advance the emu one tick.
             emu.tick();
-            debugger.overwrite(emu.get_debug_info());
+            // debugger.overwrite(emu.get_debug_info());
         }
 
         // Draw screen.

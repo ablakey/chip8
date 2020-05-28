@@ -21,6 +21,11 @@ impl Emulator {
     /// This isn't perfectly accurate but that is 1 Opcode per tick and decrementing timers once
     /// every 8 ticks.
     pub fn tick(&mut self) {
+        // Do nothing if awaiting input.
+        if self.state.wait_for_input {
+            return;
+        }
+
         self.cycle += 1;
 
         // Every tick, process 1 opcode.

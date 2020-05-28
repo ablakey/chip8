@@ -91,7 +91,7 @@ impl Input {
     /// ║ A ║ 0 ║ B ║ F ║
     /// ╚═══╩═══╩═══╩═══╝
     /// ```
-    pub fn get_chip8_keys(&mut self) -> [bool; 16] {
+    pub fn get_chip8_keys(&mut self) -> u16 {
         let keys: Vec<Scancode> = self
             .event_pump
             .keyboard_state()
@@ -102,11 +102,9 @@ impl Input {
         // which means none of the letters/numbers align, but the shape does.
         let key_states = Self::KEY_BINDINGS
             .iter()
-            .map(|b| keys.contains(b))
-            .collect::<Vec<bool>>();
+            .map(|b| if keys.contains(b) { "1" } else { "0" })
+            .collect::<String>();
 
-        let mut foo = [false; 16];
-        foo.copy_from_slice(&key_states[..]);
-        return foo;
+        return isize::from_str_radix(key_states.as_str(), 2).unwrap() as u16;
     }
 }

@@ -39,15 +39,16 @@ pub struct Chip8 {
     registers: [usize; 16],               // 16  8-bit registers: V0 - VF
     index_register: usize,                // 16-bit register (for memory addressing)
     program_counter: usize,               // 16-bit program counter.
+    delay_timer: usize,                   // TODO
+    sound_timer: usize,                   // TODO
+    stack: [usize; 16],                   // TODO
+    stack_pointer: usize,                 // TODO
+    keys: u16,                            // bitmask for 16 keys: 0 -> F. LSB -> MSB
     pub graphics_buffer: [bool; 64 * 32], // 64 rows, 32 cols, row-major.
-    delay_timer: usize,
-    sound_timer: usize,
-    stack: [usize; 16],
-    stack_pointer: usize,
-    keys: [bool; 16],
-    pub has_graphics_update: bool,
-    pub wait_for_input: bool, // Should main loop wait for input before being able to tick?
-    pub rom_size: usize,      // Size of loaded ROM in bytes.
+    pub has_graphics_update: bool,        // TODO
+    pub wait_for_input: bool,             // Wait for input before next tick?
+    pub rom_size: usize,                  // Size of loaded ROM in bytes.
+    pub last_opcode: usize,               // Last run opcode.
 }
 
 /// Core feature implenentation.
@@ -69,10 +70,11 @@ impl Chip8 {
             sound_timer: 0,
             stack: [0; 16],
             stack_pointer: 0,
-            keys: [false; 16],
+            keys: 0,
             has_graphics_update: false,
             wait_for_input: false,
             rom_size: 0,
+            last_opcode: 0,
         }
     }
 
@@ -104,7 +106,16 @@ impl Chip8 {
     }
 
     /// Set the current state of all keys into the machine's memory.
-    pub fn set_keys(&mut self, keys: [bool; 16]) {
+    pub fn set_keys(&mut self, keys: u16) {
+        // Optionally handle the second part of self.KEYD.
+        // This was a fun one to learn.  It is the equivalent of a bitwise "Material Nonimplication"
+        // and detects when any bit in a bitfield was high and is now low. ie. releasing a key.
+        if self.wait_for_input {
+            let released_keys = !(!self.keys | keys);
+
+            if (released_keys > 0) {}
+        }
+
         self.keys = keys;
         // TODO: if any key state changes from false to true AND we are halted, perform the
         // rest of that opcode (write state to register) and then unpause the machine.
@@ -117,10 +128,7 @@ impl Chip8 {
         // Reset flags.
         self.has_graphics_update = false;
 
-        // Get opcode by combining two bits from memory.
-        let low = self.memory[self.program_counter + 1];
-        let high = self.memory[self.program_counter];
-        let opcode = ((high) << 8) | low;
+        let opcode = self.get_opcode();
         let opcode_symbols = OpCodeSymbols::from_value(opcode);
 
         let OpCodeSymbols {
@@ -177,6 +185,15 @@ impl Chip8 {
         if ![0xB, 0x2, 0x1].contains(&opcode_symbols.a) {
             self.program_counter += Chip8::OPCODE_SIZE;
         }
+
+        self.last_opcode = opcode;
+    }
+
+    fn get_opcode(&self) -> usize {
+        // Get opcode by combining two bits from memory.
+        let low = self.memory[self.program_counter + 1];
+        let high = self.memory[self.program_counter];
+        ((high) << 8) | low
     }
 }
 /// Opcode implementation.
@@ -209,8 +226,8 @@ impl Chip8 {
     /// Call subroutine at NNN.
     fn CALL(&mut self, nnn: usize) {
         // Maintain current PC in the stack to be able to return from subroutine.
-        self.stack[self.stack_pointer] = self.program_counter;
         self.stack_pointer += 1;
+        self.stack[self.stack_pointer] = self.program_counter;
         self.program_counter = nnn;
     }
 
@@ -275,7 +292,13 @@ impl Chip8 {
     }
 
     fn SUB(&mut self, x: usize, y: usize) {
-        self.not_implemented();
+        let vx = self.registers[x];
+        let vy = self.registers[y];
+
+        // Wrapping subtract as u8 to ensure it wraps around, as intended by the hardware.
+        self.registers[x] = (vx as u8).wrapping_sub(y as u8) as usize;
+
+        self.registers[0xF] = if vx > vy { 1 } else { 0 };
     }
     fn SHR(&mut self, x: usize, y: usize) {
         self.not_implemented();
@@ -358,7 +381,7 @@ impl Chip8 {
     }
 
     fn KEYD(&mut self, x: usize) {
-        self.not_implemented();
+        self.wait_for_input = true;
     }
 
     /// Set Delay Timer to VX.
@@ -403,9 +426,10 @@ impl Chip8 {
 impl Chip8 {
     pub fn format_debug(&self) -> String {
         [
-            format!("PC:  {:x}\n", self.program_counter),
-            format!("SP:  {:x}\n", self.stack_pointer),
-            format!("I:   {:x}\n", self.index_register),
+            format!("PC:     {:x}\n", self.program_counter),
+            format!("SP:     {:x}\n", self.stack_pointer),
+            format!("I:      {:x}\n", self.index_register),
+            format!("Opcode: {:#X}\n", self.last_opcode),
             format!("Registers: {:x?}\n", self.registers),
             format!("Stack:     {:x?}\n", self.stack),
         ]
@@ -426,7 +450,7 @@ impl Chip8 {
     }
 
     fn not_implemented(&self) {
-        panic!("Not implemented.");
+        panic!("Not implemented. Called: {:X}.", self.get_opcode());
     }
 }
 
