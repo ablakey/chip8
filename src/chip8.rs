@@ -4,22 +4,17 @@ use rand::Rng;
 use std::fs::File;
 use std::io;
 use std::io::prelude::*;
-
 /// A structure of unpacked symbols from an OpCode.
 /// Not all symbols (and sometimes no symbols) are valid, depending on what the opcode is.
-/// n: 4-bit constant
-/// nn: 8-bit constant
-/// nnn: 12-bit address
-/// x: 4-bit register identifier
-/// y: 4-bit register identifier
+/// Sometimes the opcode is identified by a combination of nibbles rather than just the first one.
 #[derive(Debug)]
 struct OpCodeSymbols {
-    a: usize,
-    x: usize,
-    y: usize,
-    n: usize,
-    nn: usize,
-    nnn: usize,
+    a: usize,   // 4-bit opcode identifier.
+    x: usize,   // 4-bit register identifier
+    y: usize,   // 4-bit register identifier
+    n: usize,   // 4-bit constant
+    nn: usize,  // 8-bit constant
+    nnn: usize, // 12-bit address
 }
 
 impl OpCodeSymbols {
@@ -52,6 +47,7 @@ pub struct Chip8 {
     keys: [bool; 16],
     pub has_graphics_update: bool,
     pub wait_for_input: bool, // Should main loop wait for input before being able to tick?
+    pub rom_size: usize,      // Size of loaded ROM in bytes.
 }
 
 /// Core feature implenentation.
@@ -76,10 +72,11 @@ impl Chip8 {
             keys: [false; 16],
             has_graphics_update: false,
             wait_for_input: false,
+            rom_size: 0,
         }
     }
 
-    pub fn load_rom(&mut self, path: String) -> io::Result<()> {
+    pub fn load_rom(&mut self, path: &String) -> io::Result<()> {
         let start = Chip8::ADDRESS_ROM;
         let mut buffer = Vec::new();
         let mut f = File::open(path)?;
@@ -90,6 +87,7 @@ impl Chip8 {
             self.memory[idx + start] = value as usize;
         }
 
+        self.rom_size = buffer.len();
         Ok(())
     }
 
@@ -124,7 +122,6 @@ impl Chip8 {
         let high = self.memory[self.program_counter];
         let opcode = ((high) << 8) | low;
         let opcode_symbols = OpCodeSymbols::from_value(opcode);
-        println!("opcode: {:x?}", opcode);
 
         let OpCodeSymbols {
             a,
@@ -194,7 +191,6 @@ impl Chip8 {
     fn RTS(&mut self) {
         self.program_counter = self.stack[self.stack_pointer];
         self.stack_pointer -= 1;
-        self.print_debug();
     }
 
     // Jump to machine code routine at nnn. Not implemented in modern CHIP8 emulators.
@@ -405,30 +401,31 @@ impl Chip8 {
 /// Debug functions.
 // #[cfg(debug_assertions)]
 impl Chip8 {
-    pub fn print_debug(&self) {
-        println!("PC: {:x}", self.program_counter);
-        println!("SP: {:x}", self.stack_pointer);
-        println!("I: {:x}", self.index_register);
-        println!("Registers: {:x?}", self.registers);
-        println!("Stack: {:x?}", self.stack);
+    pub fn format_debug(&self) -> String {
+        [
+            format!("PC:  {:x}\n", self.program_counter),
+            format!("SP:  {:x}\n", self.stack_pointer),
+            format!("I:   {:x}\n", self.index_register),
+            format!("Registers: {:x?}\n", self.registers),
+            format!("Stack:     {:x?}\n", self.stack),
+        ]
+        .concat()
     }
 
-    pub fn print_mem(&self) {
+    pub fn format_memory(&self) -> String {
         let start = Chip8::ADDRESS_ROM;
-        println!(
+        format!(
             "{:?}",
-            self.memory[start..start + 200]
+            self.memory[start..start + self.rom_size]
                 .to_vec()
                 .iter()
                 .map(|&f| f as u8)
                 .collect::<Vec<u8>>()
                 .hex_dump()
-        );
+        )
     }
 
     fn not_implemented(&self) {
-        self.print_debug();
-        self.print_mem();
         panic!("Not implemented.");
     }
 }
@@ -453,7 +450,7 @@ mod tests {
     #[test]
     fn test_load_rom() {
         let mut machine = Chip8::init();
-        machine.load_rom(String::from("roms/maze.c8")).unwrap();
+        machine.load_rom(&String::from("roms/maze.c8")).unwrap();
         let start = Chip8::ADDRESS_ROM;
         let end = start + TEST_ROM_BYTES.len();
         assert_eq!(&machine.memory[start..end], TEST_ROM_BYTES);
