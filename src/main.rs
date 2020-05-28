@@ -5,11 +5,12 @@ mod screen;
 use emulator::Emulator;
 use input::{Input, InputEvent};
 use screen::Screen;
+
 use std::thread::sleep;
 use std::time::Duration;
 
 fn main() -> Result<(), String> {
-    // Debug flags.
+    // Debugger.
     let mut paused = true;
 
     // Init I/O components
@@ -26,7 +27,9 @@ fn main() -> Result<(), String> {
         match input.get_event() {
             InputEvent::Exit => break 'program,
             InputEvent::ToggleRun => paused = !paused,
-            InputEvent::Tick => emulator.tick(),
+            InputEvent::Tick => {
+                emulator.tick();
+            }
             _ => (),
         }
 
