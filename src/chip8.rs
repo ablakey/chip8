@@ -56,13 +56,42 @@ pub struct Chip8 {
 impl Chip8 {
     // Memory addresses (start, end).
     // const ADDR_INTERPRETER: (usize, usize) = (0x000, 0x1FF);
-    // const ADDR_FONTSET: (usize, usize) = (0x050, 0x0A0);
+    const ADDRESS_FONT: usize = 0x050; // Where the font is stored in memory.
     const ADDRESS_ROM: usize = 0x200;
     const OPCODE_SIZE: usize = 2;
 
+    #[rustfmt::skip]
+    /// 4x5 raster font. Each hex character represents a row of pixels.
+    /// Only the least significant four pixels are used.
+    const FONT: [usize; 80] = [
+        	0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
+        	0x20, 0x60, 0x20, 0x20, 0x70, // 1
+        	0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
+        	0xF0, 0x10, 0xF0, 0x10, 0xF0, // 3
+        	0x90, 0x90, 0xF0, 0x10, 0x10, // 4
+        	0xF0, 0x80, 0xF0, 0x10, 0xF0, // 5
+        	0xF0, 0x80, 0xF0, 0x90, 0xF0, // 6
+        	0xF0, 0x10, 0x20, 0x40, 0x40, // 7
+        	0xF0, 0x90, 0xF0, 0x90, 0xF0, // 8
+        	0xF0, 0x90, 0xF0, 0x10, 0xF0, // 9
+        	0xF0, 0x90, 0xF0, 0x90, 0x90, // A
+        	0xE0, 0x90, 0xE0, 0x90, 0xE0, // B
+        	0xF0, 0x80, 0x80, 0x80, 0xF0, // C
+        	0xE0, 0x90, 0x90, 0x90, 0xE0, // D
+        	0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
+        	0xF0, 0x80, 0xF0, 0x80, 0x80, // F
+    ];
+
     pub fn init() -> Self {
+        // Load font into memory.
+        let mut memory = [0; 4096];
+        Chip8::FONT
+            .iter()
+            .enumerate()
+            .for_each(|(i, &n)| memory[i + Chip8::ADDRESS_FONT] = n);
+
         Self {
-            memory: [0; 4096],
+            memory,
             registers: [0; 16],
             index_register: 0,
             program_counter: Chip8::ADDRESS_ROM,
@@ -369,7 +398,6 @@ impl Chip8 {
                     }
 
                     // Update the pixel with XOR.
-                    println!("{}", current_pixel ^ true);
                     self.graphics_buffer[idx] = current_pixel ^ true;
                 }
             }
@@ -377,11 +405,21 @@ impl Chip8 {
 
         self.has_graphics_update = true;
     }
+
+    // Skip next operation if key stored at VX is pressed.
     fn SKPR(&mut self, x: usize) {
-        self.not_implemented();
+        let vx = self.registers[x];
+        if self.keys[vx] {
+            self.program_counter += Chip8::OPCODE_SIZE;
+        }
     }
+
+    // Skip next operation if key stored at VX is not pressed.
     fn SKUP(&mut self, x: usize) {
-        self.not_implemented();
+        let vx = self.registers[x];
+        if !self.keys[vx] {
+            self.program_counter += Chip8::OPCODE_SIZE;
+        }
     }
 
     /// Load Delay Timer into VX.
@@ -421,11 +459,21 @@ impl Chip8 {
         self.index_register = (vx + i) % 0x1000
     }
 
+    // Set I to location of sprite for character VX.
     fn LDSPR(&mut self, x: usize) {
-        self.not_implemented();
+        let character = self.registers[x];
+        self.index_register = Chip8::ADDRESS_FONT + character * 5; // Each character is 5 bytes.
     }
+
+    // Store binary-coded decimal of VX at I, I+1, I+2.
     fn BCD(&mut self, x: usize) {
-        self.not_implemented();
+        let vx = self.registers[x];
+        let vx_str = format!("{:03}", vx);
+
+        // for chars convert them to usize and store. Most significant at I, least at I+2.
+        vx_str.chars().enumerate().for_each(|(i, val)| {
+            self.memory[self.index_register + i] = val.to_digit(10).unwrap() as usize
+        });
     }
 
     // Store registers to memory starting at I.
@@ -448,7 +496,6 @@ impl Chip8 {
 impl Chip8 {
     pub fn format_debug(&self) -> String {
         let keys: Vec<usize> = self.keys.iter().map(|&k| if k { 1 } else { 0 }).collect();
-
         [
             format!("PC:     {:x}\n", self.program_counter),
             format!("SP:     {:x}\n", self.stack_pointer),
