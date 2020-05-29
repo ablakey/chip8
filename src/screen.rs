@@ -25,13 +25,10 @@ impl Screen {
 
         let c = window.into_canvas().build().map_err(|e| e.to_string())?;
 
-        let mut f = Self {
+        Ok(Self {
             sdl_canvas: c,
             scale_factor,
-        };
-        f.sdl_canvas.set_draw_color(Self::BG_COLOR);
-
-        return Ok(f);
+        })
     }
 
     /// Iterate through all pixels in buffer and draw only those that are set active.
@@ -55,6 +52,9 @@ impl Screen {
                 );
             })
             .collect();
+
+        self.sdl_canvas.set_draw_color(Self::BG_COLOR);
+        self.sdl_canvas.clear();
 
         self.sdl_canvas.set_draw_color(Self::PIXEL_COLOR);
         self.sdl_canvas.fill_rects(&rects).unwrap();

@@ -37,13 +37,14 @@ impl OpCodeSymbols {
 pub struct Chip8 {
     memory: [usize; 4096],                // 4k of 8 bit memory.
     registers: [usize; 16],               // 16  8-bit registers: V0 - VF
-    index_register: usize,                // 16-bit register (for memory addressing)
+    index_register: usize,                // 16-bit register (for memory addressing) aka I
     program_counter: usize,               // 16-bit program counter.
     delay_timer: usize,                   // TODO
     sound_timer: usize,                   // TODO
     stack: [usize; 16],                   // TODO
     stack_pointer: usize,                 // TODO
-    keys: u16,                            // bitmask for 16 keys: 0 -> F. LSB -> MSB
+    keys: [bool; 16],                     // TODO
+    keyd_register: usize,                 // 8 bit register for the KEYD opcode.
     pub graphics_buffer: [bool; 64 * 32], // 64 rows, 32 cols, row-major.
     pub has_graphics_update: bool,        // TODO
     pub wait_for_input: bool,             // Wait for input before next tick?
@@ -70,11 +71,12 @@ impl Chip8 {
             sound_timer: 0,
             stack: [0; 16],
             stack_pointer: 0,
-            keys: 0,
+            keys: [false; 16],
             has_graphics_update: false,
             wait_for_input: false,
             rom_size: 0,
             last_opcode: 0,
+            keyd_register: 0,
         }
     }
 
@@ -106,19 +108,18 @@ impl Chip8 {
     }
 
     /// Set the current state of all keys into the machine's memory.
-    pub fn set_keys(&mut self, keys: u16) {
-        // Optionally handle the second part of self.KEYD.
-        // This was a fun one to learn.  It is the equivalent of a bitwise "Material Nonimplication"
-        // and detects when any bit in a bitfield was high and is now low. ie. releasing a key.
+    pub fn set_keys(&mut self, keys: [bool; 16]) {
+        // If waiting for input and any key is pressed, continue self.KEYD opcode.
         if self.wait_for_input {
-            let released_keys = !(!self.keys | keys);
-
-            if (released_keys > 0) {}
-        }
+            for (key_name, &is_pressed) in keys.iter().enumerate() {
+                if is_pressed {
+                    self.KEYD_RESUME(key_name);
+                    break;
+                }
+            }
+        };
 
         self.keys = keys;
-        // TODO: if any key state changes from false to true AND we are halted, perform the
-        // rest of that opcode (write state to register) and then unpause the machine.
     }
 
     pub fn execute_opcode(&mut self) {
@@ -300,19 +301,26 @@ impl Chip8 {
 
         self.registers[0xF] = if vx > vy { 1 } else { 0 };
     }
-    fn SHR(&mut self, x: usize, y: usize) {
-        self.not_implemented();
+
+    // Store LSB of VX  to VF then bit shift right (divide by 2).
+    /// Unused y. Opcode was undocumented, possibly unintended.
+    fn SHR(&mut self, x: usize, _y: usize) {
+        let vx = self.registers[x];
+        self.registers[x] = vx >> 1;
+        self.registers[0xF] = x & 0x1;
     }
+
     fn SUBN(&mut self, x: usize, y: usize) {
         self.not_implemented();
     }
 
-    /// Store most-significant bit of VX in VF then shift VX left by 1.
-    fn SHL(&mut self, x: usize, y: usize) {
+    /// Store most-significant bit of VX in VF then shift VX left by 1 (multiply by 2).
+    /// Unused y. Opcode was undocumented, possibly unintended.
+    fn SHL(&mut self, x: usize, _y: usize) {
         let vx = self.registers[x];
-        self.registers[0xF] = x & 0x80;
-
+        // Mask by 0xFF to prevent values larger than 8 bits.
         self.registers[x] = (vx << 1) & 0xFF;
+        self.registers[0xF] = x & 0x80;
     }
 
     /// Skip next instruction if VX != VY.
@@ -361,6 +369,7 @@ impl Chip8 {
                     }
 
                     // Update the pixel with XOR.
+                    println!("{}", current_pixel ^ true);
                     self.graphics_buffer[idx] = current_pixel ^ true;
                 }
             }
@@ -380,8 +389,17 @@ impl Chip8 {
         self.registers[x] = self.delay_timer;
     }
 
+    /// Wait for the next input before resuming the remainder of this operation.
     fn KEYD(&mut self, x: usize) {
+        self.keyd_register = x;
         self.wait_for_input = true;
+    }
+
+    /// Set self.keyd_register to the name of the key (0-F).
+    /// This is called when keyboard input has been received.
+    fn KEYD_RESUME(&mut self, key: usize) {
+        self.registers[self.keyd_register] = key;
+        self.wait_for_input = false;
     }
 
     /// Set Delay Timer to VX.
@@ -409,8 +427,12 @@ impl Chip8 {
     fn BCD(&mut self, x: usize) {
         self.not_implemented();
     }
+
+    // Store registers to memory starting at I.
     fn STOR(&mut self, x: usize) {
-        self.not_implemented();
+        for n in 0..x + 1 {
+            self.memory[self.index_register + n] = self.registers[n];
+        }
     }
 
     /// Populate registers V0 to VX with data starting at I.
@@ -425,6 +447,8 @@ impl Chip8 {
 // #[cfg(debug_assertions)]
 impl Chip8 {
     pub fn format_debug(&self) -> String {
+        let keys: Vec<usize> = self.keys.iter().map(|&k| if k { 1 } else { 0 }).collect();
+
         [
             format!("PC:     {:x}\n", self.program_counter),
             format!("SP:     {:x}\n", self.stack_pointer),
@@ -432,6 +456,7 @@ impl Chip8 {
             format!("Opcode: {:#X}\n", self.last_opcode),
             format!("Registers: {:x?}\n", self.registers),
             format!("Stack:     {:x?}\n", self.stack),
+            format!("Keys:      {:?}\n", keys),
         ]
         .concat()
     }

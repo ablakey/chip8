@@ -61,7 +61,7 @@ fn main() -> Result<(), String> {
         }
 
         // Sleep at a rate that emulates about 500Hz. This won't be accurate.
-        sleep(Duration::new(0, (2000 * 1000) as u32))
+        sleep(Duration::new(0, 2_000_000 as u32))
     }
 
     Ok(())
