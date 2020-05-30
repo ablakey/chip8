@@ -8,6 +8,8 @@ pub enum InputEvent {
     Exit,
     ToggleRun,
     Tick,
+    SaveState,
+    RestoreState,
 }
 
 pub struct Input {
@@ -59,6 +61,14 @@ impl Input {
                     keycode: Some(Keycode::Space),
                     ..
                 } => InputEvent::ToggleRun,
+                Event::KeyUp {
+                    keycode: Some(Keycode::F5),
+                    ..
+                } => InputEvent::SaveState,
+                Event::KeyUp {
+                    keycode: Some(Keycode::F9),
+                    ..
+                } => InputEvent::RestoreState,
                 Event::KeyUp {
                     keycode: Some(Keycode::Right),
                     ..

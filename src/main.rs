@@ -31,16 +31,22 @@ fn main() -> Result<(), String> {
 
     // Print out initial debug state.
     debugger.write(emu.state.format_memory());
-    debugger.write(emu.get_debug_info());
+    debugger.write(emu.state.format_debug());
 
     'program: loop {
         // Handle emu I/O (the inputs not destined for the Chip8).
         match input.get_event() {
             InputEvent::Exit => break 'program,
             InputEvent::ToggleRun => emu.paused = !emu.paused,
+            InputEvent::SaveState => emu.save_state(),
+            InputEvent::RestoreState => {
+                emu.restore_state();
+                screen.draw(&emu.state.graphics_buffer);
+                debugger.overwrite(emu.state.format_debug());
+            }
             InputEvent::Tick => {
-                emu.tick();
-                debugger.overwrite(emu.get_debug_info());
+                emu.state.tick();
+                debugger.overwrite(emu.state.format_debug());
             }
             _ => (),
         }
@@ -51,8 +57,8 @@ fn main() -> Result<(), String> {
             emu.state.set_keys(input.get_chip8_keys());
 
             // Advance the emu one tick.
-            emu.tick();
-            // debugger.overwrite(emu.get_debug_info());
+            emu.state.tick();
+            // debugger.overwrite(emu.state.format_debug());
         }
 
         // Draw screen.

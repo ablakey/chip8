@@ -35,21 +35,22 @@ impl OpCodeSymbols {
 
 #[derive(Clone)]
 pub struct Chip8 {
-    memory: [usize; 4096],                // 4k of 8 bit memory.
-    registers: [usize; 16],               // 16  8-bit registers: V0 - VF
-    index_register: usize,                // 16-bit register (for memory addressing) aka I
-    program_counter: usize,               // 16-bit program counter.
+    cycle: usize,                         // The current cycle count.
     delay_timer: usize,                   // TODO
-    sound_timer: usize,                   // TODO
-    stack: [usize; 16],                   // TODO
-    stack_pointer: usize,                 // TODO
-    keys: [bool; 16],                     // TODO
+    index_register: usize,                // 16-bit register (for memory addressing) aka I
     keyd_register: usize,                 // 8 bit register for the KEYD opcode.
+    keys: [bool; 16],                     // TODO
+    memory: [usize; 4096],                // 4k of 8 bit memory.
+    program_counter: usize,               // 16-bit program counter.
     pub graphics_buffer: [bool; 64 * 32], // 64 rows, 32 cols, row-major.
     pub has_graphics_update: bool,        // TODO
-    pub wait_for_input: bool,             // Wait for input before next tick?
-    pub rom_size: usize,                  // Size of loaded ROM in bytes.
     pub last_opcode: usize,               // Last run opcode.
+    pub rom_size: usize,                  // Size of loaded ROM in bytes.
+    pub wait_for_input: bool,             // Wait for input before next tick?
+    registers: [usize; 16],               // 16  8-bit registers: V0 - VF
+    sound_timer: usize,                   // TODO
+    stack_pointer: usize,                 // TODO
+    stack: [usize; 16],                   // TODO
 }
 
 /// Core feature implenentation.
@@ -91,21 +92,22 @@ impl Chip8 {
             .for_each(|(i, &n)| memory[i + Chip8::ADDRESS_FONT] = n);
 
         Self {
-            memory,
-            registers: [0; 16],
-            index_register: 0,
-            program_counter: Chip8::ADDRESS_ROM,
-            graphics_buffer: [false; 64 * 32],
+            cycle: 0,
             delay_timer: 0,
-            sound_timer: 0,
-            stack: [0; 16],
-            stack_pointer: 0,
-            keys: [false; 16],
+            graphics_buffer: [false; 64 * 32],
             has_graphics_update: false,
-            wait_for_input: false,
-            rom_size: 0,
-            last_opcode: 0,
+            index_register: 0,
             keyd_register: 0,
+            keys: [false; 16],
+            last_opcode: 0,
+            memory,
+            program_counter: Chip8::ADDRESS_ROM,
+            registers: [0; 16],
+            rom_size: 0,
+            sound_timer: 0,
+            stack_pointer: 0,
+            stack: [0; 16],
+            wait_for_input: false,
         }
     }
 
@@ -149,6 +151,23 @@ impl Chip8 {
         };
 
         self.keys = keys;
+    }
+
+    pub fn tick(&mut self) {
+        self.cycle += 1;
+
+        // Do nothing if awaiting input.
+        if self.wait_for_input {
+            return;
+        }
+
+        // Every tick, process 1 opcode.
+        self.execute_opcode();
+
+        // Every 8th tick, decrement timers.
+        if self.cycle % 8 == 0 {
+            self.decrement_timers();
+        }
     }
 
     pub fn execute_opcode(&mut self) {
@@ -236,8 +255,8 @@ impl Chip8 {
 
     /// Return from subroutine.
     fn RTS(&mut self) {
-        self.program_counter = self.stack[self.stack_pointer];
         self.stack_pointer -= 1;
+        self.program_counter = self.stack[self.stack_pointer];
     }
 
     // Jump to machine code routine at nnn. Not implemented in modern CHIP8 emulators.
@@ -256,8 +275,8 @@ impl Chip8 {
     /// Call subroutine at NNN.
     fn CALL(&mut self, nnn: usize) {
         // Maintain current PC in the stack to be able to return from subroutine.
-        self.stack_pointer += 1;
         self.stack[self.stack_pointer] = self.program_counter;
+        self.stack_pointer += 1;
         self.program_counter = nnn;
     }
 
@@ -299,17 +318,17 @@ impl Chip8 {
 
     /// VX = VX | VY.
     fn OR(&mut self, x: usize, y: usize) {
-        self.registers[x] = self.registers[x] | self.registers[y];
+        self.registers[x] |= self.registers[y];
     }
 
     /// VX = VX & VY.
     fn AND(&mut self, x: usize, y: usize) {
-        self.registers[x] = self.registers[x] & self.registers[y];
+        self.registers[x] &= self.registers[y];
     }
 
     /// VX = VX ^ VY.
     fn XOR(&mut self, x: usize, y: usize) {
-        self.registers[x] = self.registers[x] ^ self.registers[y];
+        self.registers[x] ^= self.registers[y];
     }
 
     /// Add VX to VY. Set VF to 1 if overflow, else 0.
@@ -317,7 +336,7 @@ impl Chip8 {
         let vx = self.registers[x];
         let vy = self.registers[y];
 
-        self.registers[0xF] = if vx + vy >= 0x100 { 1 } else { 0 };
+        self.registers[0xF] = if vx + vy > 0xFF { 1 } else { 0 };
         self.registers[x] = (vx + vy) % 0x100;
     }
 
@@ -326,17 +345,18 @@ impl Chip8 {
         let vy = self.registers[y];
 
         // Wrapping subtract as u8 to ensure it wraps around, as intended by the hardware.
-        self.registers[x] = (vx as u8).wrapping_sub(y as u8) as usize;
+        self.registers[x] = (vx as u8).wrapping_sub(vy as u8) as usize;
 
         self.registers[0xF] = if vx > vy { 1 } else { 0 };
     }
 
     // Store LSB of VX  to VF then bit shift right (divide by 2).
     /// Unused y. Opcode was undocumented, possibly unintended.
+    /// TODO: understand y better. some docs claim it gets used.
     fn SHR(&mut self, x: usize, _y: usize) {
         let vx = self.registers[x];
+        self.registers[0xF] = vx & 0x1;
         self.registers[x] = vx >> 1;
-        self.registers[0xF] = x & 0x1;
     }
 
     fn SUBN(&mut self, x: usize, y: usize) {
@@ -345,16 +365,17 @@ impl Chip8 {
 
     /// Store most-significant bit of VX in VF then shift VX left by 1 (multiply by 2).
     /// Unused y. Opcode was undocumented, possibly unintended.
+    /// TODO: understand y better. some docs claim it gets used.
     fn SHL(&mut self, x: usize, _y: usize) {
         let vx = self.registers[x];
         // Mask by 0xFF to prevent values larger than 8 bits.
+        self.registers[0xF] = (vx & 0x80) >> 7;
         self.registers[x] = (vx << 1) & 0xFF;
-        self.registers[0xF] = x & 0x80;
     }
 
     /// Skip next instruction if VX != VY.
     fn SKRNE(&mut self, x: usize, y: usize) {
-        if self.registers[x] == self.registers[y] {
+        if self.registers[x] != self.registers[y] {
             self.program_counter += Chip8::OPCODE_SIZE;
         }
     }
@@ -392,17 +413,14 @@ impl Chip8 {
                     let idx = vx + col + ((vy + row) * 64);
                     let current_pixel = self.graphics_buffer[idx];
 
-                    // If collision, set VF to 1.
-                    if current_pixel {
-                        self.registers[0xF] = 1;
-                    }
+                    // If collision, set VF to 1, else 0.
+                    self.registers[0xF] = if current_pixel { 1 } else { 0 };
 
                     // Update the pixel with XOR.
                     self.graphics_buffer[idx] = current_pixel ^ true;
                 }
             }
         }
-
         self.has_graphics_update = true;
     }
 
@@ -455,7 +473,7 @@ impl Chip8 {
         let vx = self.registers[x];
         let i = self.index_register;
 
-        self.registers[0xF] = if vx + i >= 0x1000 { 1 } else { 0 };
+        self.registers[0xF] = if vx + i > 0xFFF { 1 } else { 0 };
         self.index_register = (vx + i) % 0x1000
     }
 
@@ -467,13 +485,13 @@ impl Chip8 {
 
     // Store binary-coded decimal of VX at I, I+1, I+2.
     fn BCD(&mut self, x: usize) {
+        let i = self.index_register;
         let vx = self.registers[x];
-        let vx_str = format!("{:03}", vx);
 
-        // for chars convert them to usize and store. Most significant at I, least at I+2.
-        vx_str.chars().enumerate().for_each(|(i, val)| {
-            self.memory[self.index_register + i] = val.to_digit(10).unwrap() as usize
-        });
+        // # TODO understand better
+        self.memory[i] = vx / 100;
+        self.memory[i + 1] = (vx % 100) / 10;
+        self.memory[i + 2] = vx % 10;
     }
 
     // Store registers to memory starting at I.
@@ -497,10 +515,11 @@ impl Chip8 {
     pub fn format_debug(&self) -> String {
         let keys: Vec<usize> = self.keys.iter().map(|&k| if k { 1 } else { 0 }).collect();
         [
-            format!("PC:     {:x}\n", self.program_counter),
-            format!("SP:     {:x}\n", self.stack_pointer),
-            format!("I:      {:x}\n", self.index_register),
-            format!("Opcode: {:#X}\n", self.last_opcode),
+            format!("PC:      {:x}\n", self.program_counter - Chip8::ADDRESS_ROM),
+            format!("SP:      {:x}\n", self.stack_pointer),
+            format!("I:       {:x}\n", self.index_register),
+            format!("Opcode:  {:#X}\n", self.last_opcode),
+            format!("Cycle #: {}\n", self.cycle),
             format!("Registers: {:x?}\n", self.registers),
             format!("Stack:     {:x?}\n", self.stack),
             format!("Keys:      {:?}\n", keys),
