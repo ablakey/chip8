@@ -1,14 +1,37 @@
-# Chip8 Rust Emulator
+# Chip8
 
-## TODO
+A basic Chip8 emulator written in Rust.
 
-- remove Debugger experiment.
-- Implement WebSocket server (async).
-- Write dead simple web UI for debugging:
-  - client-side state
-  - accepts messages for:
-    - current state of registers, flags, counters, timers
-    - opcodes (500hz to we want to bin these together and send after, say, 500ms)
-  - probably want the entire thing to run on a system where we accumulate events, state, and send in bulk.
-  - UI uses vanilla CSS and <pre> tags to show us the state.
-  - React? Would make it easier to handle diffing when certain memory or flags change.
+![example](./space.gif)
+
+- Keyboard input
+- Basic sound
+- SDL graphics and I/O
+- Save/load state
+
+The purpose of this program is for the project involved in writing it. This is my first emulator and writing it gave me a chance to learn a ton of programming concepts I don't get exposed to during my day job.  I have also never used Rust before so it was a chance to get experience with the beautiful language.
+
+# How to Use
+
+```
+cargo run ./roms/TETRIS
+```
+
+# Controls
+Chip8 Input keyboard mapping (it's clunky):
+ ```
+ ╔═══╦═══╦═══╦═══╗
+ ║ 1 ║ 2 ║ 3 ║ C ║ 1 - 4
+ ╠═══╬═══╬═══╬═══╣
+ ║ 4 ║ 5 ║ 6 ║ D ║ Q - R
+ ╠═══╬═══╬═══╬═══╣
+ ║ 7 ║ 8 ║ 9 ║ E ║ A - F
+ ╠═══╬═══╬═══╬═══╣
+ ║ A ║ 0 ║ B ║ F ║ Z - V
+ ╚═══╩═══╩═══╩═══╝
+ ```
+
+- Save state: F5
+- Load state: F9
+- Pause/unpause: spacebar
+- Advance one tick while paused: Right Arrow

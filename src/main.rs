@@ -6,7 +6,6 @@ mod screen;
 use chip8::Chip8;
 use console::Term;
 use input::{Input, InputEvent};
-use rodio::{source::SineWave, Sink};
 use screen::Screen;
 use std::env;
 use std::thread::sleep;
@@ -30,7 +29,7 @@ impl Emulator {
         // SDL-based I/O.
         let sdl_context = sdl2::init()?;
         let input = Input::init(&sdl_context)?;
-        let screen = Screen::create(&sdl_context, 30)?;
+        let screen = Screen::create(&sdl_context, 20)?;
         let audio = Audio::init(440); // tone Hz.
 
         // The emulated Chip8 state. This includes memory, registers, counters, timers, etc.
