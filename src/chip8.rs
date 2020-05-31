@@ -48,7 +48,7 @@ pub struct Chip8 {
     pub rom_size: usize,                  // Size of loaded ROM in bytes.
     pub wait_for_input: bool,             // Wait for input before next tick?
     registers: [usize; 16],               // 16  8-bit registers: V0 - VF
-    sound_timer: usize,                   // Ticks down to 0 at 60hz. If not 0, a tone plays.
+    pub sound_timer: usize,               // Ticks down to 0 at 60hz. If not 0, a tone plays.
     stack_pointer: usize,                 // stack pointer for which address currently on.
     stack: [usize; 16],                   // stack to store return addresses.
 }
@@ -491,7 +491,6 @@ impl Chip8 {
         let i = self.index_register;
         let vx = self.registers[x];
 
-        // # TODO understand better
         self.memory[i] = vx / 100;
         self.memory[i + 1] = (vx % 100) / 10;
         self.memory[i + 2] = vx % 10;
@@ -513,9 +512,10 @@ impl Chip8 {
 }
 
 /// Debug functions.
-// #[cfg(debug_assertions)]
+/// Ideally we hide this behind #[cfg(debug_assertions)] to only include in debug versions.
+/// But the actual audience for this is developers, so let's not bother.
 impl Chip8 {
-    pub fn format_debug(&self) -> String {
+    pub fn dump_state(&self) -> String {
         let keys: Vec<usize> = self.keys.iter().map(|&k| if k { 1 } else { 0 }).collect();
         [
             format!("PC:      {:x}\n", self.program_counter - Chip8::ADDRESS_ROM),
@@ -530,7 +530,8 @@ impl Chip8 {
         .concat()
     }
 
-    pub fn format_memory(&self) -> String {
+    /// Dump the loaded ROM as a formatted string.
+    pub fn dum_loaded_rom(&self) -> String {
         let start = Chip8::ADDRESS_ROM;
         format!(
             "{:?}",
