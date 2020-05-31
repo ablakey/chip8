@@ -4,12 +4,15 @@ A basic Chip8 emulator written in Rust.
 
 ![example](./space.gif)
 
+The purpose of this program is for the project involved in writing it. This is my first emulator and writing it gave me a chance to learn a ton of programming concepts I don't get exposed to during my day job.  I have also never used Rust before so it was a chance to get experience with the beautiful language.
+
+Supports:
 - Keyboard input
 - Basic sound
 - SDL graphics and I/O
 - Save/load state
 
-The purpose of this program is for the project involved in writing it. This is my first emulator and writing it gave me a chance to learn a ton of programming concepts I don't get exposed to during my day job.  I have also never used Rust before so it was a chance to get experience with the beautiful language.
+
 
 # How to Use
 
