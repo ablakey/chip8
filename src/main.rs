@@ -8,10 +8,31 @@ use emulator::Emulator;
 use input::{Input, InputEvent};
 use screen::Screen;
 use std::env;
+use std::io::BufReader;
+use std::thread;
 use std::thread::sleep;
 use std::time::Duration;
 
+fn play_sound(device: &rodio::Device) -> rodio::Sink {
+    println!("Started beep1");
+
+    let file = std::fs::File::open("./src/beep.wav").unwrap();
+    let beep1 = rodio::play_once(device, BufReader::new(file)).unwrap();
+    beep1.set_volume(0.2);
+    println!("Started beep1");
+    beep1
+}
+
 fn main() -> Result<(), String> {
+    // let device = rodio::default_output_device().unwrap();
+    // let _ = play_sound(&device);
+
+    // let device = rodio::default_output_device().unwrap();
+    // let file = std::fs::File::open("./src/beep.wav").unwrap();
+    // let beep1 = rodio::play_once(&device, BufReader::new(file)).unwrap();
+    // beep1.set_volume(0.2);
+    // println!("Started beep1");
+
     // Get arguments.
     let args: Vec<String> = env::args().collect();
     let filename = &args[1];

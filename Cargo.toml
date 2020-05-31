@@ -10,6 +10,7 @@ edition = "2018"
 pretty-hex = "0.1.1"
 rand = "0.7.3"
 console = "*"
+rodio = "*"
 
 [dependencies.sdl2]
 version = "0.33.0"

@@ -36,21 +36,21 @@ impl OpCodeSymbols {
 #[derive(Clone)]
 pub struct Chip8 {
     cycle: usize,                         // The current cycle count.
-    delay_timer: usize,                   // TODO
+    delay_timer: usize,                   // Delay timer ticks down to 0 at 60hz.
     index_register: usize,                // 16-bit register (for memory addressing) aka I
     keyd_register: usize,                 // 8 bit register for the KEYD opcode.
-    keys: [bool; 16],                     // TODO
+    keys: [bool; 16],                     // Array of key states. Index is the key.
     memory: [usize; 4096],                // 4k of 8 bit memory.
     program_counter: usize,               // 16-bit program counter.
     pub graphics_buffer: [bool; 64 * 32], // 64 rows, 32 cols, row-major.
-    pub has_graphics_update: bool,        // TODO
+    pub has_graphics_update: bool,        // Flag for emulator to know when to draw graphics.
     pub last_opcode: usize,               // Last run opcode.
     pub rom_size: usize,                  // Size of loaded ROM in bytes.
     pub wait_for_input: bool,             // Wait for input before next tick?
     registers: [usize; 16],               // 16  8-bit registers: V0 - VF
-    sound_timer: usize,                   // TODO
-    stack_pointer: usize,                 // TODO
-    stack: [usize; 16],                   // TODO
+    sound_timer: usize,                   // Ticks down to 0 at 60hz. If not 0, a tone plays.
+    stack_pointer: usize,                 // stack pointer for which address currently on.
+    stack: [usize; 16],                   // stack to store return addresses.
 }
 
 /// Core feature implenentation.
@@ -352,20 +352,23 @@ impl Chip8 {
 
     // Store LSB of VX  to VF then bit shift right (divide by 2).
     /// Unused y. Opcode was undocumented, possibly unintended.
-    /// TODO: understand y better. some docs claim it gets used.
     fn SHR(&mut self, x: usize, _y: usize) {
         let vx = self.registers[x];
         self.registers[0xF] = vx & 0x1;
         self.registers[x] = vx >> 1;
     }
 
+    /// Set VX to VY - VX. VF = 0 if borrow else 1.
     fn SUBN(&mut self, x: usize, y: usize) {
-        self.not_implemented();
+        let vx = self.registers[x];
+        let vy = self.registers[y];
+
+        self.registers[x] = vy.wrapping_sub(vx);
+        self.registers[0xF] = if vx > vy { 0 } else { 1 }
     }
 
     /// Store most-significant bit of VX in VF then shift VX left by 1 (multiply by 2).
     /// Unused y. Opcode was undocumented, possibly unintended.
-    /// TODO: understand y better. some docs claim it gets used.
     fn SHL(&mut self, x: usize, _y: usize) {
         let vx = self.registers[x];
         // Mask by 0xFF to prevent values larger than 8 bits.
@@ -538,10 +541,6 @@ impl Chip8 {
                 .collect::<Vec<u8>>()
                 .hex_dump()
         )
-    }
-
-    fn not_implemented(&self) {
-        panic!("Not implemented. Called: {:X}.", self.get_opcode());
     }
 }
 
