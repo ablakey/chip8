@@ -565,7 +565,7 @@ mod tests {
     #[test]
     fn test_load_rom() {
         let mut machine = Chip8::init();
-        machine.load_rom(&String::from("roms/maze.c8")).unwrap();
+        machine.load_rom(&String::from("roms/MAZE")).unwrap();
         let start = Chip8::ADDRESS_ROM;
         let end = start + TEST_ROM_BYTES.len();
         assert_eq!(&machine.memory[start..end], TEST_ROM_BYTES);

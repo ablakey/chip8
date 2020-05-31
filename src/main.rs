@@ -22,6 +22,9 @@ struct Emulator {
 }
 
 impl Emulator {
+    const SCREEN_ZOOM: u32 = 20; // Multiple to zoom screen by.
+    const TONE: u32 = 440; // Pitch for beep sound.
+
     fn init(path: &String) -> Result<Self, String> {
         // CLI debugging.
         let debugger = Debugger::init();
@@ -29,8 +32,8 @@ impl Emulator {
         // SDL-based I/O.
         let sdl_context = sdl2::init()?;
         let input = Input::init(&sdl_context)?;
-        let screen = Screen::create(&sdl_context, 20)?;
-        let audio = Audio::init(440); // tone Hz.
+        let screen = Screen::create(&sdl_context, Emulator::SCREEN_ZOOM)?;
+        let audio = Audio::init(Emulator::TONE);
 
         // The emulated Chip8 state. This includes memory, registers, counters, timers, etc.
         let mut state = Chip8::init();
@@ -63,13 +66,6 @@ impl Emulator {
     /// Loop forever at 500Hz.
     /// Handles input, ticks the Chip8 CPU, draws graphics and plays audio.
     pub fn run_forever(&mut self) {
-        // let device = rodio::default_output_device().unwrap();
-        // let sink = Sink::new(&device);
-
-        // // Add a dummy source of the sake of the example.
-        // let source = SineWave::new(440);
-        // sink.append(source);
-
         'program: loop {
             // Emulator and Chip8 I/O.
             match self.input.get_event() {
@@ -132,16 +128,6 @@ impl Debugger {
 }
 
 fn main() {
-    // let device = rodio::default_output_device().unwrap();
-    // let _ = play_sound(&device);
-
-    // let device = rodio::default_output_device().unwrap();
-    // let file = std::fs::File::open("./src/beep.wav").unwrap();
-    // let beep1 = rodio::play_once(&device, BufReader::new(file)).unwrap();
-    // beep1.set_volume(0.2);
-    // println!("Started beep1");
-
-    // Get arguments.
     let args: Vec<String> = env::args().collect();
     let filename = &args[1];
 
