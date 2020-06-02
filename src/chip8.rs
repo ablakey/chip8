@@ -413,7 +413,10 @@ impl Chip8 {
                 // If it is 1, do collision detection and set the pixel.
                 if pixels & 0x80 >> col > 0 {
                     // Get current pixel.
-                    let idx = vx + col + ((vy + row) * 64);
+                    let col = (vx + col) % 64;
+                    let row = (vy + row) % 32;
+
+                    let idx = col + (row * 64);
                     let current_pixel = self.graphics_buffer[idx];
 
                     // If collision, set VF to 1, else 0.
