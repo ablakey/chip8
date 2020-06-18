@@ -25,18 +25,18 @@ impl Emulator {
     const SCREEN_ZOOM: u32 = 20; // Multiple to zoom screen by.
     const TONE: u32 = 440; // Pitch for beep sound.
 
-    fn init(path: &String) -> Result<Self, String> {
+    fn new(path: &String) -> Result<Self, String> {
         // CLI debugging.
-        let debugger = Debugger::init();
+        let debugger = Debugger::new();
 
         // SDL-based I/O.
         let sdl_context = sdl2::init()?;
-        let input = Input::init(&sdl_context)?;
+        let input = Input::new(&sdl_context)?;
         let screen = Screen::create(&sdl_context, Emulator::SCREEN_ZOOM)?;
-        let audio = Audio::init(Emulator::TONE);
+        let audio = Audio::new(Emulator::TONE);
 
         // The emulated Chip8 state. This includes memory, registers, counters, timers, etc.
-        let mut state = Chip8::init();
+        let mut state = Chip8::new();
         state.load_rom(path).unwrap();
 
         debugger.write(state.dum_loaded_rom());
@@ -48,7 +48,7 @@ impl Emulator {
             state,
             audio,
             saved_state: None,
-            is_paused: true,
+            is_paused: false,
         })
     }
 
@@ -111,7 +111,7 @@ struct Debugger {
 }
 
 impl Debugger {
-    pub fn init() -> Self {
+    pub fn new() -> Self {
         let terminal = Term::stdout();
         Self { terminal }
     }
@@ -137,7 +137,7 @@ fn main() {
 
     let filename = &args[1];
 
-    let emulator = Emulator::init(filename);
+    let emulator = Emulator::new(filename);
 
     match emulator {
         Ok(mut e) => e.run_forever(),

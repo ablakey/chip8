@@ -83,7 +83,7 @@ impl Chip8 {
         	0xF0, 0x80, 0xF0, 0x80, 0x80, // F
     ];
 
-    pub fn init() -> Self {
+    pub fn new() -> Self {
         // Load font into memory.
         let mut memory = [0; 4096];
         Chip8::FONT

@@ -6,7 +6,7 @@ pub struct Audio {
 }
 
 impl Audio {
-    pub fn init(freq: u32) -> Self {
+    pub fn new(freq: u32) -> Self {
         let device = rodio::default_output_device().unwrap();
         let sink = Sink::new(&device);
 

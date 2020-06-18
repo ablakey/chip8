@@ -38,7 +38,7 @@ impl Input {
         Scancode::V,
     ];
 
-    pub fn init(context: &sdl2::Sdl) -> Result<Self, String> {
+    pub fn new(context: &sdl2::Sdl) -> Result<Self, String> {
         let event_pump = context.event_pump()?;
 
         Ok(Self { event_pump })
