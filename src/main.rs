@@ -32,7 +32,7 @@ impl Emulator {
         // SDL-based I/O.
         let sdl_context = sdl2::init()?;
         let input = Input::new(&sdl_context)?;
-        let screen = Screen::create(&sdl_context, Emulator::SCREEN_ZOOM)?;
+        let screen = Screen::new(&sdl_context, Emulator::SCREEN_ZOOM)?;
         let audio = Audio::new(Emulator::TONE);
 
         // The emulated Chip8 state. This includes memory, registers, counters, timers, etc.
