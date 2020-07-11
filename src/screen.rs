@@ -9,7 +9,7 @@ impl Screen {
     const BG_COLOR: sdl2::pixels::Color = sdl2::pixels::Color::RGB(0, 0, 0);
     const PIXEL_COLOR: sdl2::pixels::Color = sdl2::pixels::Color::RGB(255, 255, 255);
 
-    pub fn create(context: &sdl2::Sdl, scale_factor: u32) -> Result<Self, String> {
+    pub fn new(context: &sdl2::Sdl, scale_factor: u32) -> Result<Self, String> {
         let video_subsys = context.video()?;
 
         let window = video_subsys
